@@ -12,6 +12,7 @@ logs
 *.sqlite
 sqlite/
 data/
+.husky/_
 # Hardhat
 cache
 artifacts
