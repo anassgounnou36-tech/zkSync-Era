@@ -1,6 +1,10 @@
 name: Docs
 on:
   pull_request:
+
+permissions:
+  contents: read
+
 jobs:
   markdownlint:
     runs-on: ubuntu-latest
