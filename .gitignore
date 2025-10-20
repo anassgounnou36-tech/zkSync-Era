@@ -1,0 +1,23 @@
+# Node
+node_modules
+dist
+coverage
+.cache
+tmp
+.temp
+.env
+.env.*
+*.log
+logs
+*.sqlite
+sqlite/
+data/
+.husky/_
+# Hardhat
+cache
+artifacts
+typechain-types
+# Docker
+docker/data
+# Misc
+.DS_Store

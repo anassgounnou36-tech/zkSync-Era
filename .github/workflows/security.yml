@@ -1,0 +1,17 @@
+name: Security
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slither:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Slither (non-blocking)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD":/src ghcr.io/crytic/slither:latest /src --ignore-compile || true
