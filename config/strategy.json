@@ -1,0 +1,35 @@
+{
+  "arbitrage": {
+    "minProfitUSD": 3.12,
+    "maxSlippage": 0.005,
+    "gasMultiplier": 1.2,
+    "flashloanSize": {
+      "WETH": "2000000000000000000",
+      "USDC": "2000000000"
+    },
+    "targetPairs": [
+      {
+        "tokenA": "WETH",
+        "tokenB": "USDC"
+      },
+      {
+        "tokenA": "WETH",
+        "tokenB": "USDT"
+      },
+      {
+        "tokenA": "USDC",
+        "tokenB": "USDT"
+      }
+    ],
+    "expectedDailyOpportunities": 1318,
+    "targetCaptureRate": 0.20,
+    "opportunityDecayTime": 370
+  },
+  "safety": {
+    "maxGasPrice": "50000000000",
+    "dailyGasBudget": "100000000000000000",
+    "emergencyWithdrawOnly": false,
+    "testnetOnly": false,
+    "dryRun": false
+  }
+}
