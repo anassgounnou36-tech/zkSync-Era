@@ -22,11 +22,19 @@ async function main() {
   // Simulator and executor initialized for future orchestration logic
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _simulator = new ArbitrageSimulator();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _executor = new ArbitrageExecutor(
-    config.privateKey,
-    config.dryRun ? config.zkSyncTestnetRpcUrl : config.zkSyncRpcUrl
-  );
+  
+  // Only initialize executor if we have a valid private key
+  let _executor;
+  if (config.privateKey && config.privateKey !== "0x" + "0".repeat(64)) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _executor = new ArbitrageExecutor(
+      config.privateKey,
+      config.dryRun ? config.zkSyncTestnetRpcUrl : config.zkSyncRpcUrl
+    );
+  } else {
+    logger.warn("No valid private key configured - executor disabled");
+  }
+  
   const telegramBot = new TelegramBot();
   const db = new AnalyticsDB();
 
@@ -36,6 +44,11 @@ async function main() {
   // Start monitoring (placeholder orchestration)
   logger.info("Bot components initialized and ready");
   logger.info("Press Ctrl+C to stop");
+
+  // Keep process alive
+  await new Promise(() => {
+    // Infinite wait - process will be killed by SIGINT
+  });
 
   // Graceful shutdown
   process.on("SIGINT", () => {
@@ -51,7 +64,7 @@ async function main() {
 const args = process.argv.slice(2);
 if (args.includes("--adapter") && args.includes("cli")) {
   main().catch((error) => {
-    logger.error({ error }, "Fatal error");
+    logger.error({ error: error.message, stack: error.stack }, "Fatal error");
     process.exit(1);
   });
 }
