@@ -1,0 +1,92 @@
+# zkSync Era Flashloan Arbitrage Bot Specification
+
+## Overview
+Production-grade arbitrage bot for zkSync Era with flashloans, upgradable contracts, role-based access control, off-chain orchestration, analytics, and comprehensive monitoring.
+
+## Architecture Components
+
+### 1. Smart Contracts
+- **FlashloanRouterUpgradeable**: UUPS upgradable contract for managing flashloans
+  - Generic `executeFlashloan(token, amount, data)` interface
+  - Integration with zkSync Era DeFi protocols
+  - SafeERC20 for token operations
+  
+- **ArbitrageExecutorUpgradeable**: UUPS upgradable contract for executing arbitrage
+  - Token/pool whitelisting
+  - Slippage protection
+  - Multi-hop swap support
+  - Emergency pause functionality
+
+### 2. Access Control Roles
+- **Admin**: Full contract control, can grant/revoke roles
+- **Pauser**: Can pause/unpause contract operations
+- **Executor**: Can execute arbitrage transactions
+- **Strategist**: Can update strategy parameters
+- **Withdrawer**: Can withdraw funds from contracts
+
+### 3. Off-Chain Orchestration
+- **Mempool Monitor**: Watches pending transactions for arbitrage opportunities
+- **Price/Route Builder**: Calculates optimal arbitrage routes
+- **Simulator**: Dry-run simulations before execution
+- **Transaction Submitter**: Executes profitable trades
+- **Alert System**: Telegram notifications for events
+
+### 4. Analytics
+- SQLite database for trade tracking
+- PnL reporting
+- Performance metrics
+
+### 5. Security Features
+- Upgradable contracts with UUPS pattern
+- Role-based access control
+- Reentrancy guards
+- Slippage protection
+- Emergency pause mechanism
+- Static analysis with Slither
+
+### 6. Deployment & Operations
+- Hardhat zkSync configuration
+- Environment-based configuration
+- Docker containerization
+- CI/CD with GitHub Actions
+- Comprehensive documentation
+
+## Technical Stack
+- Solidity ^0.8.20 with OpenZeppelin upgradeable contracts
+- TypeScript for off-chain components
+- Hardhat with zkSync plugins
+- Vitest for testing
+- ESLint + Solhint for code quality
+- Fastify for HTTP API
+- Telegraf for Telegram integration
+- Better-sqlite3 for analytics
+
+## Development Workflow
+1. Install dependencies: `npm install`
+2. Build: `npm run build`
+3. Lint: `npm run lint`
+4. Test: `npm run test`
+5. Deploy: `npm run deploy`
+6. Monitor: `npm run monitor`
+
+## Configuration
+All sensitive data in .env file:
+- Private keys
+- RPC endpoints
+- Telegram credentials
+- Contract addresses
+- Strategy parameters
+
+## Testing Strategy
+- Unit tests for critical contract functions
+- Integration tests for arbitrage flows
+- Mock contracts for local testing
+- Testnet deployment before mainnet
+
+## Safety Guidelines
+- Start with small amounts on testnet
+- Verify all contract interactions
+- Monitor gas prices
+- Set conservative slippage limits
+- Use multi-sig for admin operations
+- Regular security audits
