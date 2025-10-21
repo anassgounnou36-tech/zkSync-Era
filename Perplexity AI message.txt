@@ -1,0 +1,102 @@
+Goal
+Implement production-ready SyncSwap Vault flashloan integration and real DEX price fetching to make the zkSync Era arbitrage bot operational on mainnet/testnet, aligning with the "Perplexity AI message.txt" proposal. Include configuration files, TypeScript modules, Solidity updates, and safe test scaffolding that won't break CI. Keep the codebase upgradable, RBAC-secured, and consistent with existing architecture.
+
+Key changes
+1) Add spec/proposal file
+- Add a new file at repo root: Perplexity AI message.txt (exact contents from the user's proposal) for audit traceability.
+
+2) Add configuration
+- config/dexes.json (mainnet addresses and settings per the proposal)
+- config/strategy.json (thresholds, flashloan sizes, and safety knobs per the proposal)
+
+3) Solidity: Flashloan integration (SyncSwap Vault)
+- Update contracts/core/FlashloanRouterUpgradeable.sol to support SyncSwap Vault flashLoan callback pattern while preserving UUPS, AccessControl, Pausable, and existing roles (BotRoles).
+- Add ISyncSwapVault and IFlashloanCallback interfaces in the same file (or new interfaces if preferred) with receiveFlashLoan callback implementation.
+- Expose executeFlashloan(address[] tokens, uint256[] amounts, bytes calldata data) which calls SyncSwap Vault flashLoan.
+- Validate msg.sender in the callback (only vault), and require that arbitrageExecutor is set.
+- Transfer borrowed tokens to arbitrage executor, execute arbitrage via encoded call to ArbitrageExecutorUpgradeable, and then repay borrowed amounts (fee is expected 0 for SyncSwap; still account generically for a fee array).
+- Keep AccessControl via BotRoles: DEFAULT_ADMIN_ROLE and EXECUTOR_ROLE gating consistent with repo.
+
+4) Solidity: Arbitrage executor extension
+- Update contracts/core/ArbitrageExecutorUpgradeable.sol to add a new function executeArbitrage(buyDex, sellDex, tokenIn, tokenOut, amountIn, minProfit) and internal _swap router handler.
+- Implement Mute.io router swap (swapExactTokensForTokens with stable=false path) guarded by SafeERC20 approve/revoke.
+- Keep SyncSwap swap as not yet implemented (revert with clear message) to avoid unsafe calls; the off-chain route builder will manage this for now.
+- Maintain upgradability, RBAC, Pausable, and NonReentrant already present in the contract.
+
+5) TypeScript: live price fetching and profitability modeling
+- Add src/prices/fetcher.ts: price fetching from SyncSwap V1 (if supported) and Mute. Use ethers v6 JsonRpcProvider and Contract. Gracefully handle failures. Return array of price quotes and derive basic arbitrage pair (best buy vs best sell).
+- Add src/simulation/profitCalculator.ts: model flashloan fee (0 bps for SyncSwap), gas costs on Era, and compute net profit in wei + USD. Provide estimateGas() helper. No external calls.
+
+6) Tests: integration-safe
+- Add test/integration.test.ts which (a) exercises PriceFetcher using mainnet RPC and (b) validates ProfitCalculator. To avoid CI instability, guard live-RPC tests behind an env flag (e.g., ZKSYNC_LIVE_TESTS=1). Default to skip so CI remains green. Unit tests remain unaffected.
+
+7) Docs and npm scripts
+- README/docs mention new configs.
+- No change to npm scripts needed except ensuring tests pass without network access.
+
+Implementation details (add/modify files)
+A) Add: Perplexity AI message.txt (exact content from user's latest message)
+
+B) Add: config/dexes.json
+{
+  "zkSyncEra": {
+    "chainId": 324,
+    "rpcUrl": "https://mainnet.era.zksync.io",
+    "wsUrl": "wss://mainnet.era.zksync.io/ws",
+    "flashloanProvider": {
+      "name": "SyncSwap Vault",
+      "address": "0x621425a1Ef6abE91058E9712575dcc4258F8d091",
+      "fee": 0,
+      "maxBorrow": { "WETH": "1000000000000000000000", "USDC": "1000000000000" }
+    },
+    "dexes": {
+      "syncswap_v1": { "name": "SyncSwap V1", "router": "0x2da10A1e27bF85cEdD8FFb1AbBe97e53391C0295", "factory": "0xf2DAd89f2788a8CD54625C60b55cD3d2D0ACa7Cb", "poolMaster": "0xbB05918E9B4bA9Fe2c8384d223f0844867909Ffb", "fee": 0.003, "enabled": true },
+      "syncswap_v2": { "name": "SyncSwap V2", "router": "0x9B5def958d0f3b6955cBEa4D5B7809b2fb26b059", "factory": "0x0a34FBDf37C246C0B401da5f00ABd6529d906193", "poolMaster": "0xFdFE03bAE6B8113Ee1002d2bE453Fb71CA5783d3", "fee": 0.003, "enabled": true },
+      "mute": { "name": "Mute.io", "router": "0x8B791913eB07C32779a16750e3868aA8495F5964", "fee": 0.003, "enabled": true }
+    },
+    "tokens": {
+      "WETH": { "address": "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91", "decimals": 18 },
+      "USDC": { "address": "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4", "decimals": 6 },
+      "USDT": { "address": "0x493257fD37EDB34451f62EDf8D2a0C418852bA4C", "decimals": 6 }
+    }
+  }
+}
+
+C) Add: config/strategy.json
+{ "arbitrage": { "minProfitUSD": 3.12, "maxSlippage": 0.005, "gasMultiplier": 1.2, "flashloanSize": { "WETH": "2000000000000000000", "USDC": "2000000000" }, "targetPairs": [ {"tokenA":"WETH","tokenB":"USDC"}, {"tokenA":"WETH","tokenB":"USDT"}, {"tokenA":"USDC","tokenB":"USDT"} ], "expectedDailyOpportunities": 1318, "targetCaptureRate": 0.20, "opportunityDecayTime": 370 }, "safety": { "maxGasPrice": "50000000000", "dailyGasBudget": "100000000000000000", "emergencyWithdrawOnly": false, "testnetOnly": false, "dryRun": false } }
+
+D) Modify: contracts/core/FlashloanRouterUpgradeable.sol
+- Keep pragma ^0.8.24 and existing imports.
+- Add interfaces:
+  interface ISyncSwapVault { function flashLoan(address recipient, address[] calldata tokens, uint256[] calldata amounts, bytes calldata userData) external; }
+  interface IFlashloanCallback { function receiveFlashLoan(address[] calldata tokens, uint256[] calldata amounts, uint256[] calldata feeAmounts, bytes calldata userData) external; }
+- Storage additions: address public syncSwapVault (default 0x6214…d091);
+- New setter setSyncSwapVault(address) onlyRole(DEFAULT_ADMIN_ROLE).
+- New function executeFlashloan(address[] calldata tokens, uint256[] calldata amounts, bytes calldata arbitrageData) external onlyRole(EXECUTOR_ROLE) whenNotPaused; calls ISyncSwapVault(syncSwapVault).flashLoan(address(this), tokens, amounts, arbitrageData).
+- New callback function receiveFlashLoan(...) external nonReentrant: require(msg.sender == syncSwapVault); decode userData into executor calldata or parameters; call executor via low-level call to executeArbitrage or execute(bytes) depending on our existing API; ensure repayment by transferring amounts[i] + feeAmounts[i] back to syncSwapVault; emit FlashloanExecuted event with profit computed vs pre-balance.
+- Reuse SafeERC20 and IERC20 types already included in the file; do not break existing mock-provider flow used in tests (keep onFlashLoan for mocks).
+
+E) Modify: contracts/core/ArbitrageExecutorUpgradeable.sol
+- Keep pragma ^0.8.24 and existing inheritance (UUPS, AccessControl, Reentrancy, Pausable).
+- Add interfaces for Mute router and (placeholder) SyncSwap router.
+- Add constants for known router addresses (as per config; can be overridden/whitelisted already via routerWhitelist mapping).
+- Add external function executeArbitrage(address buyDex, address sellDex, address tokenIn, address tokenOut, uint256 amountIn, uint256 minProfit) onlyRole(EXECUTOR_ROLE) nonReentrant whenNotPaused returns (uint256 profit) that performs two _swap calls and checks profit >= minProfit.
+- Add internal _swap(router, tokenIn, tokenOut, amountIn) that approves, executes swap on supported routers; supports Mute via swapExactTokensForTokens with stable=false; for SyncSwap routes, revert("SyncSwap swap not implemented") for now. Revoke approvals after swap.
+
+F) Add: src/prices/fetcher.ts
+- Use ethers v6 JsonRpcProvider and Contract.
+- Attempt getAmountsOut on SyncSwap V1 (best-effort; handle failure) and Mute; return DexPrice[] and finder for arbitrage.
+
+G) Add: src/simulation/profitCalculator.ts
+- Compute netProfit including flashloan fee (0 bps) and gas costs. Return profitability boolean and USD conversion.
+
+H) Add: test/integration.test.ts
+- Uses PriceFetcher and ProfitCalculator.
+- Guard live network calls behind env flag ZKSYNC_LIVE_TESTS=1; otherwise skip. Prevents CI breakage.
+
+I) Housekeeping
+- Ensure imports compile (ethers v6 JsonRpcProvider, parseUnits in tests).
+- Update docs/GETTING_STARTED.md with a note about optional live tests flag.
+
+Acceptance
+- CI must remain green (unit tests pass; integration tests skipped by default). Contracts compile; TypeScript builds. The PR intentionally defers concrete SyncSwap swap encoding to a future change while enabling SyncSwap Vault flashloan path and off-chain price-based planning.

@@ -1,10 +1,32 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+/**
+ * @title IMuteRouter
+ * @notice Interface for Mute.io Router
+ */
+interface IMuteRouter {
+    function swapExactTokensForTokens(
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline,
+        bool[] calldata stable
+    ) external returns (uint256[] memory amounts);
+
+    function getAmountsOut(
+        uint256 amountIn,
+        address[] calldata path,
+        bool[] calldata stable
+    ) external view returns (uint256[] memory amounts);
+}
 
 /**
  * @title ArbitrageExecutorUpgradeable
@@ -16,7 +38,7 @@ contract ArbitrageExecutorUpgradeable is
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable
 {
-    using SafeERC20Upgradeable for IERC20Upgradeable;
+    using SafeERC20 for IERC20;
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
@@ -41,6 +63,11 @@ contract ArbitrageExecutorUpgradeable is
     event TokenWhitelisted(address indexed token, bool status);
     event MaxSlippageUpdated(uint256 newSlippage);
     event PausedStateChanged(bool newState);
+
+    // Known DEX router addresses on zkSync Era mainnet
+    address public constant MUTE_ROUTER = 0x8B791913eB07C32779a16750e3868aA8495F5964;
+    address public constant SYNCSWAP_V1_ROUTER = 0x2da10A1e27bF85cEdD8FFb1AbBe97e53391C0295;
+    address public constant SYNCSWAP_V2_ROUTER = 0x9B5def958d0f3b6955cBEa4D5B7809b2fb26b059;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -90,17 +117,17 @@ contract ArbitrageExecutorUpgradeable is
         require(amountIn > 0, "Amount must be greater than 0");
 
         // Transfer input tokens from caller
-        uint256 balanceBefore = IERC20Upgradeable(tokenIn).balanceOf(address(this));
+        uint256 balanceBefore = IERC20(tokenIn).balanceOf(address(this));
         
         // Approve router to spend tokens
-        IERC20Upgradeable(tokenIn).safeIncreaseAllowance(router, amountIn);
+        IERC20(tokenIn).safeIncreaseAllowance(router, amountIn);
 
         // Execute swap through router
         (bool success, ) = router.call(swapData);
         require(success, "Swap failed");
 
         // Check output amount
-        uint256 balanceAfter = IERC20Upgradeable(tokenOut).balanceOf(address(this));
+        uint256 balanceAfter = IERC20(tokenOut).balanceOf(address(this));
         amountOut = balanceAfter; // Simplified for mock
 
         // Verify slippage protection
@@ -111,6 +138,103 @@ contract ArbitrageExecutorUpgradeable is
 
         emit ArbitrageExecuted(tokenIn, tokenOut, amountIn, amountOut, profit);
         
+        return amountOut;
+    }
+
+    /**
+     * @notice Execute dual-leg arbitrage with DEX routing
+     * @param buyDex DEX router to buy from
+     * @param sellDex DEX router to sell to
+     * @param tokenIn Input token
+     * @param tokenOut Output token
+     * @param amountIn Amount of input token
+     * @param minProfit Minimum profit required
+     */
+    function executeArbitrageDual(
+        address buyDex,
+        address sellDex,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 minProfit
+    ) external nonReentrant onlyRole(EXECUTOR_ROLE) returns (uint256 profit) {
+        require(!paused, "Contract is paused");
+        require(whitelistedRouters[buyDex], "Buy DEX not whitelisted");
+        require(whitelistedRouters[sellDex], "Sell DEX not whitelisted");
+        require(whitelistedTokens[tokenIn], "Input token not whitelisted");
+        require(whitelistedTokens[tokenOut], "Output token not whitelisted");
+        require(amountIn > 0, "Amount must be greater than 0");
+
+        uint256 balanceBefore = IERC20(tokenIn).balanceOf(address(this));
+
+        // First swap: buy tokenOut using tokenIn
+        uint256 intermediateAmount = _swap(buyDex, tokenIn, tokenOut, amountIn);
+
+        // Second swap: sell tokenOut back to tokenIn
+        uint256 finalAmount = _swap(sellDex, tokenOut, tokenIn, intermediateAmount);
+
+        // Calculate profit
+        uint256 balanceAfter = IERC20(tokenIn).balanceOf(address(this));
+        profit = balanceAfter > balanceBefore ? balanceAfter - balanceBefore : 0;
+
+        require(profit >= minProfit, "Insufficient profit");
+
+        emit ArbitrageExecuted(tokenIn, tokenOut, amountIn, finalAmount, profit);
+
+        return profit;
+    }
+
+    /**
+     * @notice Internal function to execute swap on supported DEX
+     * @param router DEX router address
+     * @param tokenIn Input token
+     * @param tokenOut Output token
+     * @param amountIn Amount to swap
+     * @return amountOut Amount received
+     */
+    function _swap(
+        address router,
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn
+    ) internal returns (uint256 amountOut) {
+        require(amountIn > 0, "Invalid amount");
+
+        // Approve router
+        IERC20(tokenIn).safeIncreaseAllowance(router, amountIn);
+
+        uint256 balanceBefore = IERC20(tokenOut).balanceOf(address(this));
+
+        if (router == MUTE_ROUTER) {
+            // Mute.io swap
+            address[] memory path = new address[](2);
+            path[0] = tokenIn;
+            path[1] = tokenOut;
+
+            bool[] memory stable = new bool[](1);
+            stable[0] = false; // Use volatile pools
+
+            IMuteRouter(router).swapExactTokensForTokens(
+                amountIn,
+                0, // No minimum for internal swap (protected at top level)
+                path,
+                address(this),
+                block.timestamp + 300, // 5 minute deadline
+                stable
+            );
+        } else if (router == SYNCSWAP_V1_ROUTER || router == SYNCSWAP_V2_ROUTER) {
+            // SyncSwap not yet implemented - requires pool-specific encoding
+            revert("SyncSwap swap not implemented");
+        } else {
+            revert("Unknown router");
+        }
+
+        uint256 balanceAfter = IERC20(tokenOut).balanceOf(address(this));
+        amountOut = balanceAfter - balanceBefore;
+
+        // Revoke approval
+        IERC20(tokenIn).forceApprove(router, 0);
+
         return amountOut;
     }
 
@@ -167,7 +291,7 @@ contract ArbitrageExecutorUpgradeable is
         address to
     ) external onlyRole(WITHDRAWER_ROLE) {
         require(to != address(0), "Invalid recipient");
-        IERC20Upgradeable(token).safeTransfer(to, amount);
+        IERC20(token).safeTransfer(to, amount);
     }
 
     /**

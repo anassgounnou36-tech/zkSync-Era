@@ -1,0 +1,54 @@
+{
+  "zkSyncEra": {
+    "chainId": 324,
+    "rpcUrl": "https://mainnet.era.zksync.io",
+    "wsUrl": "wss://mainnet.era.zksync.io/ws",
+    "flashloanProvider": {
+      "name": "SyncSwap Vault",
+      "address": "0x621425a1Ef6abE91058E9712575dcc4258F8d091",
+      "fee": 0,
+      "maxBorrow": {
+        "WETH": "1000000000000000000000",
+        "USDC": "1000000000000"
+      }
+    },
+    "dexes": {
+      "syncswap_v1": {
+        "name": "SyncSwap V1",
+        "router": "0x2da10A1e27bF85cEdD8FFb1AbBe97e53391C0295",
+        "factory": "0xf2DAd89f2788a8CD54625C60b55cD3d2D0ACa7Cb",
+        "poolMaster": "0xbB05918E9B4bA9Fe2c8384d223f0844867909Ffb",
+        "fee": 0.003,
+        "enabled": true
+      },
+      "syncswap_v2": {
+        "name": "SyncSwap V2",
+        "router": "0x9B5def958d0f3b6955cBEa4D5B7809b2fb26b059",
+        "factory": "0x0a34FBDf37C246C0B401da5f00ABd6529d906193",
+        "poolMaster": "0xFdFE03bAE6B8113Ee1002d2bE453Fb71CA5783d3",
+        "fee": 0.003,
+        "enabled": true
+      },
+      "mute": {
+        "name": "Mute.io",
+        "router": "0x8B791913eB07C32779a16750e3868aA8495F5964",
+        "fee": 0.003,
+        "enabled": true
+      }
+    },
+    "tokens": {
+      "WETH": {
+        "address": "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91",
+        "decimals": 18
+      },
+      "USDC": {
+        "address": "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4",
+        "decimals": 6
+      },
+      "USDT": {
+        "address": "0x493257fD37EDB34451f62EDf8D2a0C418852bA4C",
+        "decimals": 6
+      }
+    }
+  }
+}
