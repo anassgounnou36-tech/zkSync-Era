@@ -50,15 +50,61 @@ The bot uses two main configuration files:
 
 See [Perplexity AI message.txt](./Perplexity%20AI%20message.txt) for the full implementation proposal and specifications.
 
+## New CLI Commands
+
+The bot now includes comprehensive monitoring and execution capabilities:
+
+### Monitor Price Gaps
+
+```bash
+# Monitor for 2 hours
+npm run cli -- monitor --duration 2
+
+# Monitor for default 48 hours
+npm run cli -- monitor
+```
+
+Continuously scans configured token pairs, tracks arbitrage opportunities in SQLite with lifecycle tracking (open/closed), computes decay times, and generates hourly statistics.
+
+### Execute Arbitrage
+
+```bash
+# Dry run mode (recommended for testing)
+npm run cli -- execute --dry-run
+
+# Live execution (requires wallet and contract setup)
+npm run cli -- execute --interval 60
+```
+
+Automated execution orchestrator that reads opportunities, validates against safety gates (min profit, max gas, slippage), and triggers flashloan-based trades.
+
+### Generate Reports
+
+```bash
+npm run cli -- report
+```
+
+Generates `monitoring-report.json` with aggregated statistics including opportunity counts, decay times, hourly breakdowns, and top opportunities.
+
+### View Configuration
+
+```bash
+npm run cli -- info
+```
+
+Displays current bot configuration including enabled DEXes, RPC endpoints, and thresholds.
+
 ## Highlights
 
 - Upgradable contracts (UUPS), roles (admin, pauser, executor, strategist, withdrawer)
 - **SyncSwap Vault** flashloan integration with multi-token support (0% fee)
-- **DEX Integration**: Mute.io swap support; SyncSwap routing deferred to off-chain
+- **DEX Integration**: Mute.io swap support; SyncSwap V1 price fetching via PoolMaster->getPool + Router->getAmountOut
 - Arbitrage executor with token/pool whitelists, slippage guard, SafeERC20
 - Flashloan router with `executeFlashloanMulti(tokens[], amounts[], data)` and `receiveFlashLoan` callback
 - **Live price fetching** from DEXes with graceful error handling
 - **Profit calculator** with gas cost modeling and profitability validation
+- **Continuous monitoring** with SQLite persistence, opportunity lifecycle tracking, and decay time computation
+- **Execution orchestrator** with safety gates, dry-run mode, and flashloan integration
 - Off-chain orchestration: mempool monitor, price/route builder, simulator, submitter
 - Telegram alerts + manual commands (pause/resume/kill/status)
 - Analytics DB + PnL reports
@@ -67,8 +113,11 @@ See [Perplexity AI message.txt](./Perplexity%20AI%20message.txt) for the full im
 ## Status
 
 - **Production-ready SyncSwap Vault flashloan integration** with real mainnet addresses
-- **Live DEX price fetching** from Mute.io (SyncSwap V1/V2 deferred)
+- **Live DEX price fetching** from Mute.io and SyncSwap V1 (best-effort)
 - **Profit modeling** with gas cost estimation and USD conversion
+- **Continuous price gap monitoring** with SQLite persistence and lifecycle tracking
+- **Execution orchestrator** with safety gates and flashloan integration
+- **Comprehensive CLI** for monitoring, execution, and reporting
 - End-to-end dry-run with mocks and placeholder addresses
 - zkSync Era mainnet-ready configuration with safety parameters
 - Integration tests guarded by environment flag to keep CI green
