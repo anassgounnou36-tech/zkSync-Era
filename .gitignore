@@ -23,3 +23,7 @@ typechain-types
 docker/data
 # Misc
 .DS_Store
+data/
+*.sqlite
+monitoring-report.json
+test-report.json

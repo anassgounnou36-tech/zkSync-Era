@@ -5,6 +5,14 @@ const MUTE_ROUTER_ABI = [
   "function getAmountsOut(uint256 amountIn, address[] calldata path, bool[] calldata stable) external view returns (uint256[] memory amounts)",
 ];
 
+const SYNCSWAP_POOL_MASTER_ABI = [
+  "function getPool(address tokenA, address tokenB) external view returns (address pool)",
+];
+
+const SYNCSWAP_ROUTER_ABI = [
+  "function getAmountOut(uint256 amountIn, address tokenIn, address tokenOut) external view returns (uint256 amountOut)",
+];
+
 export interface DexPrice {
   dex: string;
   tokenIn: string;
@@ -82,24 +90,67 @@ export class PriceFetcher {
   }
 
   /**
-   * Fetch price from SyncSwap V1 (placeholder - not fully implemented)
+   * Fetch price from SyncSwap V1 using PoolMaster->getPool + Router->getAmountOut
    */
   async fetchSyncSwapV1Price(
     tokenIn: string,
     tokenOut: string,
     amountIn: bigint
   ): Promise<DexPrice> {
-    // SyncSwap V1 requires pool-specific logic which is deferred
-    return {
-      dex: "syncswap_v1",
-      tokenIn,
-      tokenOut,
-      amountIn,
-      amountOut: 0n,
-      price: 0,
-      success: false,
-      error: "SyncSwap V1 price fetching not yet implemented",
-    };
+    try {
+      // Get pool address from PoolMaster
+      const poolMaster = new Contract(
+        this.config.dexes.syncswap_v1.poolMaster,
+        SYNCSWAP_POOL_MASTER_ABI,
+        this.provider
+      );
+
+      const poolAddress = await poolMaster.getPool(tokenIn, tokenOut);
+
+      // Check if pool exists
+      if (!poolAddress || poolAddress === "0x0000000000000000000000000000000000000000") {
+        return {
+          dex: "syncswap_v1",
+          tokenIn,
+          tokenOut,
+          amountIn,
+          amountOut: 0n,
+          price: 0,
+          success: false,
+          error: "Pool not found",
+        };
+      }
+
+      // Get quote from router
+      const router = new Contract(
+        this.config.dexes.syncswap_v1.router,
+        SYNCSWAP_ROUTER_ABI,
+        this.provider
+      );
+
+      const amountOut = await router.getAmountOut(amountIn, tokenIn, tokenOut);
+
+      return {
+        dex: "syncswap_v1",
+        tokenIn,
+        tokenOut,
+        amountIn,
+        amountOut: BigInt(amountOut.toString()),
+        price: Number(amountOut) / Number(amountIn),
+        success: true,
+      };
+    } catch (error) {
+      return {
+        dex: "syncswap_v1",
+        tokenIn,
+        tokenOut,
+        amountIn,
+        amountOut: 0n,
+        price: 0,
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
   }
 
   /**

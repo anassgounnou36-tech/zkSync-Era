@@ -17,7 +17,8 @@
     "report": "tsx src/analytics/reports.ts",
     "db:migrate": "tsx src/analytics/db.ts migrate",
     "analyze:slither": "docker run --rm -v \"$PWD\":/src ghcr.io/crytic/slither:latest /src --ignore-compile",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "cli": "tsx src/cli/commands.ts"
   },
   "dependencies": {
     "@matterlabs/hardhat-zksync": "^1.1.0",
@@ -26,6 +27,7 @@
     "@matterlabs/hardhat-zksync-verify": "^1.4.0",
     "@openzeppelin/contracts-upgradeable": "^5.0.1",
     "better-sqlite3": "^9.6.0",
+    "commander": "^14.0.1",
     "dotenv": "^16.4.5",
     "ethers": "^6.12.1",
     "fastify": "^5.0.0",
