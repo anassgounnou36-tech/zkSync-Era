@@ -13,6 +13,10 @@ const SYNCSWAP_ROUTER_ABI = [
   "function getAmountOut(uint256 amountIn, address tokenIn, address tokenOut) external view returns (uint256 amountOut)",
 ];
 
+const PANCAKE_SMART_ROUTER_ABI = [
+  "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+];
+
 export interface DexPrice {
   dex: string;
   tokenIn: string;
@@ -154,6 +158,59 @@ export class PriceFetcher {
   }
 
   /**
+   * Fetch price from PancakeSwap V3 using Smart Router
+   */
+  async fetchPancakeSwapV3Price(
+    tokenIn: string,
+    tokenOut: string,
+    amountIn: bigint
+  ): Promise<DexPrice> {
+    try {
+      const smartRouter = new Contract(
+        this.config.dexes.pancakeswap_v3.smartRouter,
+        PANCAKE_SMART_ROUTER_ABI,
+        this.provider
+      );
+
+      // Use fee tier 2500 (0.25%) by default
+      const fee = 2500;
+      const sqrtPriceLimitX96 = 0; // No limit
+
+      const params = {
+        tokenIn,
+        tokenOut,
+        amountIn,
+        fee,
+        sqrtPriceLimitX96,
+      };
+
+      const result = await smartRouter.quoteExactInputSingle.staticCall(params);
+      const amountOut = result[0]; // First return value is amountOut
+
+      return {
+        dex: "pancakeswap_v3",
+        tokenIn,
+        tokenOut,
+        amountIn,
+        amountOut: BigInt(amountOut.toString()),
+        price: Number(amountOut) / Number(amountIn),
+        success: true,
+      };
+    } catch (error) {
+      return {
+        dex: "pancakeswap_v3",
+        tokenIn,
+        tokenOut,
+        amountIn,
+        amountOut: 0n,
+        price: 0,
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
    * Fetch prices from all enabled DEXes
    */
   async fetchAllPrices(
@@ -177,6 +234,16 @@ export class PriceFetcher {
         amountIn
       );
       prices.push(syncPrice);
+    }
+
+    // PancakeSwap V3
+    if (this.config.dexes.pancakeswap_v3.enabled) {
+      const pancakePrice = await this.fetchPancakeSwapV3Price(
+        tokenIn,
+        tokenOut,
+        amountIn
+      );
+      prices.push(pancakePrice);
     }
 
     return prices;

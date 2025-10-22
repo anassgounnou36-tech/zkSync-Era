@@ -29,6 +29,27 @@ interface IMuteRouter {
 }
 
 /**
+ * @title IPancakeV3Router
+ * @notice Interface for PancakeSwap V3 Router
+ */
+interface IPancakeV3Router {
+    struct ExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint24 fee;
+        address recipient;
+        uint256 amountIn;
+        uint256 amountOutMinimum;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    function exactInputSingle(ExactInputSingleParams calldata params)
+        external
+        payable
+        returns (uint256 amountOut);
+}
+
+/**
  * @title ArbitrageExecutorUpgradeable
  * @notice UUPS upgradable arbitrage executor with whitelist and slippage protection
  * @dev Executes multi-hop swaps with safety checks
@@ -68,6 +89,7 @@ contract ArbitrageExecutorUpgradeable is
     address public constant MUTE_ROUTER = 0x8B791913eB07C32779a16750e3868aA8495F5964;
     address public constant SYNCSWAP_V1_ROUTER = 0x2da10A1e27bF85cEdD8FFb1AbBe97e53391C0295;
     address public constant SYNCSWAP_V2_ROUTER = 0x9B5def958d0f3b6955cBEa4D5B7809b2fb26b059;
+    address public constant PANCAKE_V3_ROUTER = 0xD70C70AD87aa8D45b8D59600342FB3AEe76E3c68;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -222,6 +244,22 @@ contract ArbitrageExecutorUpgradeable is
                 block.timestamp + 300, // 5 minute deadline
                 stable
             );
+        } else if (router == PANCAKE_V3_ROUTER) {
+            // PancakeSwap V3 swap
+            // Calculate minimum amount out with slippage protection
+            uint256 amountOutMinimum = (amountIn * (10000 - maxSlippageBps)) / 10000;
+
+            IPancakeV3Router.ExactInputSingleParams memory params = IPancakeV3Router.ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                fee: 2500, // 0.25% fee tier
+                recipient: address(this),
+                amountIn: amountIn,
+                amountOutMinimum: amountOutMinimum,
+                sqrtPriceLimitX96: 0 // No price limit
+            });
+
+            IPancakeV3Router(router).exactInputSingle(params);
         } else if (router == SYNCSWAP_V1_ROUTER || router == SYNCSWAP_V2_ROUTER) {
             // SyncSwap not yet implemented - requires pool-specific encoding
             revert("SyncSwap swap not implemented");

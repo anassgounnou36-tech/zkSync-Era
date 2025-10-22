@@ -98,7 +98,10 @@ Displays current bot configuration including enabled DEXes, RPC endpoints, and t
 
 - Upgradable contracts (UUPS), roles (admin, pauser, executor, strategist, withdrawer)
 - **SyncSwap Vault** flashloan integration with multi-token support (0% fee)
-- **DEX Integration**: Mute.io swap support; SyncSwap V1 price fetching via PoolMaster->getPool + Router->getAmountOut
+- **DEX Integration**: 
+  - Mute.io swap support
+  - SyncSwap V1 price fetching via PoolMaster->getPool + Router->getAmountOut
+  - PancakeSwap V3 price quotes via Smart Router and swap execution via exactInputSingle
 - Arbitrage executor with token/pool whitelists, slippage guard, SafeERC20
 - Flashloan router with `executeFlashloanMulti(tokens[], amounts[], data)` and `receiveFlashLoan` callback
 - **Live price fetching** from DEXes with graceful error handling
@@ -113,7 +116,10 @@ Displays current bot configuration including enabled DEXes, RPC endpoints, and t
 ## Status
 
 - **Production-ready SyncSwap Vault flashloan integration** with real mainnet addresses
-- **Live DEX price fetching** from Mute.io and SyncSwap V1 (best-effort)
+- **Live DEX price fetching** from Mute.io, SyncSwap V1, and PancakeSwap V3 (best-effort)
+- **Supported DEXes**: Mute.io, SyncSwap V1/V2, PancakeSwap V3
+  - DEX addresses configured in `config/dexes.json`
+  - Flashloan router and arbitrage executor addresses in `config/contracts.json` (config-driven deployment)
 - **Profit modeling** with gas cost estimation and USD conversion
 - **Continuous price gap monitoring** with SQLite persistence and lifecycle tracking
 - **Execution orchestrator** with safety gates and flashloan integration
