@@ -204,6 +204,19 @@ export class PriceGapMonitor {
         const roundTripRate = buyRate * sellRate;
         const spreadPercent = (roundTripRate - 1) * 100;
 
+        logger.debug(
+          {
+            pair: `${tokenASymbol}/${tokenBSymbol}`,
+            buyDex: buyPrice.dex,
+            sellDex: sellPrice.dex,
+            buyRate,
+            sellRate,
+            roundTripRate,
+            spreadPercent,
+          },
+          "Evaluating arbitrage opportunity"
+        );
+
         if (spreadPercent > minSpreadPercent) {
           // Estimate profit
           const amountB = buyPrice.amountOut;
@@ -216,6 +229,22 @@ export class PriceGapMonitor {
             flashloanFeeBps: 0,
             ethPriceUSD: 2000, // TODO: Get live ETH price
           });
+
+          logger.debug(
+            {
+              pair: `${tokenASymbol}/${tokenBSymbol}`,
+              buyDex: buyPrice.dex,
+              sellDex: sellPrice.dex,
+              spreadPercent,
+              grossProfit: (finalA - buyPrice.amountIn).toString(),
+              gasCost: profitEstimate.gasCost.toString(),
+              netProfitUSD: profitEstimate.netProfitUSD,
+              isProfitable: profitEstimate.isProfitable,
+            },
+            profitEstimate.netProfitUSD > 0
+              ? "Opportunity is profitable - recording"
+              : "Opportunity not profitable - skipping"
+          );
 
           // Record opportunity if profitable
           if (profitEstimate.netProfitUSD > 0) {
@@ -230,6 +259,17 @@ export class PriceGapMonitor {
               status: "open",
             });
           }
+        } else {
+          logger.debug(
+            {
+              pair: `${tokenASymbol}/${tokenBSymbol}`,
+              buyDex: buyPrice.dex,
+              sellDex: sellPrice.dex,
+              spreadPercent,
+              minSpreadPercent,
+            },
+            "Spread below minimum threshold - skipping"
+          );
         }
       }
     }

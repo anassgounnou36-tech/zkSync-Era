@@ -30,6 +30,7 @@ class InstrumentedProvider extends JsonRpcProvider {
   /**
    * Override send to track all RPC requests
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override async send(method: string, params: Array<any>): Promise<any> {
     const startTime = Date.now();
     

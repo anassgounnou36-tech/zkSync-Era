@@ -145,7 +145,7 @@ export function diagConfig(): void {
   logger.info(`Default WS URL: ${config.wsUrl}`);
 
   logger.info("\nEnabled DEXes:");
-  for (const [name, dex] of Object.entries(config.dexes)) {
+  for (const [, dex] of Object.entries(config.dexes)) {
     if (dex.enabled) {
       logger.info(`  ✓ ${dex.name}`);
       const router = 'router' in dex ? dex.router : ('smartRouter' in dex ? dex.smartRouter : "N/A");
