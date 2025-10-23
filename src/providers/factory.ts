@@ -83,69 +83,40 @@ export interface ProviderConfig {
 }
 
 /**
- * Get RPC URLs based on configuration precedence
+ * Get RPC URLs from environment variables (ENV-only approach)
  * Precedence:
- * 1. If USE_ENV_RPC_ONLY=true, always use ZKSYNC_RPC_HTTP/WS (error if not set)
- * 2. If ZKSYNC_RPC_HTTP/WS are set, use them
- * 3. Fall back to config/dexes.json
- * 4. Runtime override takes precedence over all
+ * 1. Runtime override (for diag commands only)
+ * 2. ZKSYNC_RPC_HTTP from environment (REQUIRED)
+ * 
+ * No fallback to config files - RPC must always be provided via environment.
  */
 function getRpcUrls(runtimeOverride?: string): ProviderConfig {
-  const config = loadConfig();
-
-  // Runtime override takes absolute precedence
+  // Runtime override takes absolute precedence (for CLI diag testing only)
   if (runtimeOverride) {
-    logger.info({ rpcUrl: runtimeOverride }, "Using runtime RPC override");
+    logger.info({ rpcUrl: runtimeOverride }, "Using runtime RPC override (diag mode)");
     return { httpUrl: runtimeOverride };
   }
 
-  // If USE_ENV_RPC_ONLY is true, require env variables
-  if (config.useEnvRpcOnly) {
-    if (!config.zkSyncRpcHttp) {
-      throw new Error(
-        "USE_ENV_RPC_ONLY is true but ZKSYNC_RPC_HTTP is not set in environment"
-      );
-    }
-    logger.info(
-      { httpUrl: config.zkSyncRpcHttp, wsUrl: config.zkSyncRpcWs },
-      "Using RPC from environment (USE_ENV_RPC_ONLY=true)"
+  // Require ZKSYNC_RPC_HTTP from environment
+  const httpUrl = process.env.ZKSYNC_RPC_HTTP;
+  const wsUrl = process.env.ZKSYNC_RPC_WS;
+
+  if (!httpUrl) {
+    throw new Error(
+      "ZKSYNC_RPC_HTTP must be set in environment variables. " +
+      "Set it to your RPC endpoint (e.g., Alchemy, Infura, or public RPC). " +
+      "No config fallback is supported."
     );
-    return {
-      httpUrl: config.zkSyncRpcHttp,
-      wsUrl: config.zkSyncRpcWs,
-    };
   }
 
-  // Prefer env variables if available
-  if (config.zkSyncRpcHttp) {
-    logger.info(
-      { httpUrl: config.zkSyncRpcHttp, wsUrl: config.zkSyncRpcWs },
-      "Using RPC from environment variables"
-    );
-    return {
-      httpUrl: config.zkSyncRpcHttp,
-      wsUrl: config.zkSyncRpcWs,
-    };
-  }
-
-  // Fall back to legacy config or dexes.json
-  if (config.zkSyncRpcUrl && config.zkSyncRpcUrl !== "https://mainnet.era.zksync.io") {
-    logger.info(
-      { httpUrl: config.zkSyncRpcUrl },
-      "Using RPC from ZKSYNC_ERA_RPC_URL"
-    );
-    return { httpUrl: config.zkSyncRpcUrl };
-  }
-
-  // Final fallback to dexes.json
-  const dexConfig = dexesConfig.zkSyncEra;
   logger.info(
-    { httpUrl: dexConfig.rpcUrl, wsUrl: dexConfig.wsUrl },
-    "Using RPC from config/dexes.json (fallback)"
+    { httpUrl, wsUrl: wsUrl || "not set" },
+    "Using RPC from environment variables"
   );
+
   return {
-    httpUrl: dexConfig.rpcUrl,
-    wsUrl: dexConfig.wsUrl,
+    httpUrl,
+    wsUrl,
   };
 }
 

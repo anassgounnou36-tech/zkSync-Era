@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { ProfitCalculator } from "../src/simulation/profitCalculator.js";
 import { PriceGapMonitor } from "../src/monitoring/priceGapMonitor.js";
 import * as fs from "fs";
@@ -160,12 +160,21 @@ describe("Monitoring Integration Tests", () => {
 
   describe("PriceGapMonitor - Database Operations", () => {
     const testDbPath = "./data/test-monitoring.sqlite";
+    const originalEnv = { ...process.env };
 
     beforeEach(() => {
+      // Set required environment variable for RPC
+      process.env.ZKSYNC_RPC_HTTP = "https://test-rpc.example.com";
+      
       // Clean up test database if it exists
       if (fs.existsSync(testDbPath)) {
         fs.unlinkSync(testDbPath);
       }
+    });
+
+    afterEach(() => {
+      // Restore original environment
+      process.env = { ...originalEnv };
     });
 
     it("should initialize database with correct schema", () => {

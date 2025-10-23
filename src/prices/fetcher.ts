@@ -14,7 +14,7 @@ const SYNCSWAP_ROUTER_ABI = [
   "function getAmountOut(uint256 amountIn, address tokenIn, address tokenOut) external view returns (uint256 amountOut)",
 ];
 
-const PANCAKE_SMART_ROUTER_ABI = [
+const PANCAKE_QUOTER_V2_ABI = [
   "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
 ];
 
@@ -56,15 +56,33 @@ export class PriceFetcher {
   }
 
   /**
+   * Detect if a pair is a stable pair (e.g., USDC/USDT)
+   */
+  private isStablePair(tokenIn: string, tokenOut: string): boolean {
+    const stablecoins = [
+      this.config.tokens.USDC.address.toLowerCase(),
+      this.config.tokens.USDT.address.toLowerCase(),
+    ];
+
+    const tokenInLower = tokenIn.toLowerCase();
+    const tokenOutLower = tokenOut.toLowerCase();
+
+    return stablecoins.includes(tokenInLower) && stablecoins.includes(tokenOutLower);
+  }
+
+  /**
    * Fetch price from Mute.io DEX
+   * Automatically detects stable pairs (USDC/USDT) and uses stable=true for those
    */
   async fetchMutePrice(
     tokenIn: string,
     tokenOut: string,
     amountIn: bigint
   ): Promise<DexPrice> {
+    const isStable = this.isStablePair(tokenIn, tokenOut);
+
     logger.debug(
-      { dex: "mute", tokenIn, tokenOut, amountIn: amountIn.toString() },
+      { dex: "mute", tokenIn, tokenOut, amountIn: amountIn.toString(), isStable },
       "Fetching price quote"
     );
 
@@ -76,13 +94,20 @@ export class PriceFetcher {
       );
 
       const path = [tokenIn, tokenOut];
-      const stable = [false]; // Use volatile pools
+      const stable = [isStable]; // Use stable pool for stablecoin pairs
 
       const amounts = await router.getAmountsOut(amountIn, path, stable);
       const amountOut = amounts[1];
 
       logger.debug(
-        { dex: "mute", tokenIn, tokenOut, amountIn: amountIn.toString(), amountOut: amountOut.toString() },
+        { 
+          dex: "mute", 
+          tokenIn, 
+          tokenOut, 
+          amountIn: amountIn.toString(), 
+          amountOut: amountOut.toString(),
+          isStable 
+        },
         "Price quote successful"
       );
 
@@ -98,7 +123,7 @@ export class PriceFetcher {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.debug(
-        { dex: "mute", tokenIn, tokenOut, error: errorMessage },
+        { dex: "mute", tokenIn, tokenOut, error: errorMessage, isStable },
         "Price quote failed"
       );
 
@@ -201,7 +226,8 @@ export class PriceFetcher {
   }
 
   /**
-   * Fetch price from PancakeSwap V3 using Smart Router
+   * Fetch price from PancakeSwap V3 using Quoter V2
+   * Uses the official Quoter contract for reliable off-chain quotes
    */
   async fetchPancakeSwapV3Price(
     tokenIn: string,
@@ -210,13 +236,13 @@ export class PriceFetcher {
   ): Promise<DexPrice> {
     logger.debug(
       { dex: "pancakeswap_v3", tokenIn, tokenOut, amountIn: amountIn.toString() },
-      "Fetching price quote"
+      "Fetching price quote from Quoter V2"
     );
 
     try {
-      const smartRouter = new Contract(
-        this.config.dexes.pancakeswap_v3.smartRouter,
-        PANCAKE_SMART_ROUTER_ABI,
+      const quoter = new Contract(
+        this.config.dexes.pancakeswap_v3.quoter,
+        PANCAKE_QUOTER_V2_ABI,
         this.provider
       );
 
@@ -224,6 +250,7 @@ export class PriceFetcher {
       const fee = 2500;
       const sqrtPriceLimitX96 = 0; // No limit
 
+      // Encode params as tuple for quoteExactInputSingle
       const params = {
         tokenIn,
         tokenOut,
@@ -232,12 +259,20 @@ export class PriceFetcher {
         sqrtPriceLimitX96,
       };
 
-      const result = await smartRouter.quoteExactInputSingle.staticCall(params);
+      // Use staticCall to simulate the call (Quoter functions are not view/pure)
+      const result = await quoter.quoteExactInputSingle.staticCall(params);
       const amountOut = result[0]; // First return value is amountOut
 
       logger.debug(
-        { dex: "pancakeswap_v3", tokenIn, tokenOut, amountIn: amountIn.toString(), amountOut: amountOut.toString() },
-        "Price quote successful"
+        { 
+          dex: "pancakeswap_v3", 
+          tokenIn, 
+          tokenOut, 
+          amountIn: amountIn.toString(), 
+          amountOut: amountOut.toString(),
+          quoterAddress: this.config.dexes.pancakeswap_v3.quoter
+        },
+        "Price quote successful from Quoter V2"
       );
 
       return {
@@ -251,9 +286,18 @@ export class PriceFetcher {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.debug(
-        { dex: "pancakeswap_v3", tokenIn, tokenOut, error: errorMessage },
-        "Price quote failed"
+      
+      // Log revert details for debugging
+      logger.warn(
+        { 
+          dex: "pancakeswap_v3", 
+          tokenIn, 
+          tokenOut, 
+          amountIn: amountIn.toString(),
+          error: errorMessage,
+          quoterAddress: this.config.dexes.pancakeswap_v3.quoter
+        },
+        "Price quote failed - Quoter reverted (pool may not exist or have insufficient liquidity)"
       );
 
       return {
