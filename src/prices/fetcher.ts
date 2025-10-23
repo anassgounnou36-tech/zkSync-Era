@@ -1,4 +1,5 @@
 import { JsonRpcProvider, Contract } from "ethers";
+import { logger } from "../config/logger.js";
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 
 const MUTE_ROUTER_ABI = [
@@ -43,9 +44,14 @@ export class PriceFetcher {
   private provider: JsonRpcProvider;
   private config: typeof dexesConfig.zkSyncEra;
 
-  constructor(rpcUrl?: string) {
-    const url = rpcUrl || dexesConfig.zkSyncEra.rpcUrl;
-    this.provider = new JsonRpcProvider(url);
+  constructor(provider?: JsonRpcProvider) {
+    // Accept a provider instance, or create a fallback (for backward compatibility)
+    if (provider) {
+      this.provider = provider;
+    } else {
+      // Fallback for backward compatibility - not recommended
+      this.provider = new JsonRpcProvider(dexesConfig.zkSyncEra.rpcUrl);
+    }
     this.config = dexesConfig.zkSyncEra;
   }
 
@@ -57,6 +63,11 @@ export class PriceFetcher {
     tokenOut: string,
     amountIn: bigint
   ): Promise<DexPrice> {
+    logger.debug(
+      { dex: "mute", tokenIn, tokenOut, amountIn: amountIn.toString() },
+      "Fetching price quote"
+    );
+
     try {
       const router = new Contract(
         this.config.dexes.mute.router,
@@ -70,6 +81,11 @@ export class PriceFetcher {
       const amounts = await router.getAmountsOut(amountIn, path, stable);
       const amountOut = amounts[1];
 
+      logger.debug(
+        { dex: "mute", tokenIn, tokenOut, amountIn: amountIn.toString(), amountOut: amountOut.toString() },
+        "Price quote successful"
+      );
+
       return {
         dex: "mute",
         tokenIn,
@@ -80,6 +96,12 @@ export class PriceFetcher {
         success: true,
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.debug(
+        { dex: "mute", tokenIn, tokenOut, error: errorMessage },
+        "Price quote failed"
+      );
+
       return {
         dex: "mute",
         tokenIn,
@@ -88,7 +110,7 @@ export class PriceFetcher {
         amountOut: 0n,
         price: 0,
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
       };
     }
   }
@@ -101,6 +123,11 @@ export class PriceFetcher {
     tokenOut: string,
     amountIn: bigint
   ): Promise<DexPrice> {
+    logger.debug(
+      { dex: "syncswap_v1", tokenIn, tokenOut, amountIn: amountIn.toString() },
+      "Fetching price quote"
+    );
+
     try {
       // Get pool address from PoolMaster
       const poolMaster = new Contract(
@@ -113,6 +140,11 @@ export class PriceFetcher {
 
       // Check if pool exists
       if (!poolAddress || poolAddress === "0x0000000000000000000000000000000000000000") {
+        logger.debug(
+          { dex: "syncswap_v1", tokenIn, tokenOut },
+          "Price quote failed - pool not found"
+        );
+
         return {
           dex: "syncswap_v1",
           tokenIn,
@@ -134,6 +166,11 @@ export class PriceFetcher {
 
       const amountOut = await router.getAmountOut(amountIn, tokenIn, tokenOut);
 
+      logger.debug(
+        { dex: "syncswap_v1", tokenIn, tokenOut, amountIn: amountIn.toString(), amountOut: amountOut.toString() },
+        "Price quote successful"
+      );
+
       return {
         dex: "syncswap_v1",
         tokenIn,
@@ -144,6 +181,12 @@ export class PriceFetcher {
         success: true,
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.debug(
+        { dex: "syncswap_v1", tokenIn, tokenOut, error: errorMessage },
+        "Price quote failed"
+      );
+
       return {
         dex: "syncswap_v1",
         tokenIn,
@@ -152,7 +195,7 @@ export class PriceFetcher {
         amountOut: 0n,
         price: 0,
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
       };
     }
   }
@@ -165,6 +208,11 @@ export class PriceFetcher {
     tokenOut: string,
     amountIn: bigint
   ): Promise<DexPrice> {
+    logger.debug(
+      { dex: "pancakeswap_v3", tokenIn, tokenOut, amountIn: amountIn.toString() },
+      "Fetching price quote"
+    );
+
     try {
       const smartRouter = new Contract(
         this.config.dexes.pancakeswap_v3.smartRouter,
@@ -187,6 +235,11 @@ export class PriceFetcher {
       const result = await smartRouter.quoteExactInputSingle.staticCall(params);
       const amountOut = result[0]; // First return value is amountOut
 
+      logger.debug(
+        { dex: "pancakeswap_v3", tokenIn, tokenOut, amountIn: amountIn.toString(), amountOut: amountOut.toString() },
+        "Price quote successful"
+      );
+
       return {
         dex: "pancakeswap_v3",
         tokenIn,
@@ -197,6 +250,12 @@ export class PriceFetcher {
         success: true,
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.debug(
+        { dex: "pancakeswap_v3", tokenIn, tokenOut, error: errorMessage },
+        "Price quote failed"
+      );
+
       return {
         dex: "pancakeswap_v3",
         tokenIn,
@@ -205,7 +264,7 @@ export class PriceFetcher {
         amountOut: 0n,
         price: 0,
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
       };
     }
   }

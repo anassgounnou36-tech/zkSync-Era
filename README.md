@@ -17,6 +17,8 @@ npm install
 cp .env.example .env
 ```
 
+Edit `.env` to set your RPC endpoints and other configuration.
+
 4. Build, lint, test:
 
 ```bash
@@ -41,12 +43,109 @@ npm run start:cli
 
 See docs/GETTING_STARTED.md and docs/DEPLOYMENT.md for details.
 
+## Verify Your RPC is Used
+
+To ensure your bot is using the correct RPC endpoint (e.g., Alchemy) and that requests are visible in your dashboard:
+
+### 1. Configure Environment Variables
+
+Edit your `.env` file:
+
+```bash
+# Force bot to use only environment RPC (no fallback to config files)
+USE_ENV_RPC_ONLY=true
+
+# Your Alchemy or custom RPC endpoint
+ZKSYNC_RPC_HTTP=https://zksync-mainnet.g.alchemy.com/v2/YOUR_API_KEY
+ZKSYNC_RPC_WS=wss://zksync-mainnet.g.alchemy.com/v2/YOUR_API_KEY
+
+# Enable debug logging to see all RPC requests
+LOG_LEVEL=debug
+```
+
+### 2. Run Diagnostic Commands
+
+Test RPC connectivity and view metrics:
+
+```bash
+# Basic health check - tests RPC calls and displays metrics
+npm run cli -- diag health
+
+# Test quotes from all DEXes for configured pairs
+npm run cli -- diag quotes
+
+# Display current configuration
+npm run cli -- diag config
+```
+
+### 3. Verify in Your Dashboard
+
+After running the diagnostic commands:
+
+1. Check your Alchemy dashboard at https://dashboard.alchemy.com
+2. You should see requests appearing under your zkSync Era app
+3. Look for methods like `eth_chainId`, `eth_blockNumber`, `eth_call`, etc.
+
+The diagnostic commands will show:
+- Which RPC endpoint is being used
+- Total number of requests made
+- Success/failure counts
+- Request breakdown by method
+
+### 4. Monitor Runtime Metrics
+
+Start the HTTP API server to access real-time metrics:
+
+```bash
+npm run start:http
+```
+
+Then visit http://localhost:3000/metrics to see:
+- Total RPC requests
+- Requests by method (eth_call, eth_blockNumber, etc.)
+- Requests by endpoint
+- Success/failure rates
+
+### 5. Override RPC at Runtime
+
+You can override the RPC endpoint for any command without editing files:
+
+```bash
+# Use custom RPC for monitoring
+npm run cli -- monitor --rpc https://your-custom-rpc.com
+
+# Use custom RPC for diagnostics
+npm run cli -- diag health --rpc https://your-custom-rpc.com
+
+# Use custom RPC for quote testing
+npm run cli -- diag quotes --rpc https://your-custom-rpc.com
+```
+
+### Troubleshooting
+
+If you don't see requests in your dashboard:
+
+1. **Check logs**: With `LOG_LEVEL=debug`, you should see messages like:
+   ```
+   "Using RPC from environment (USE_ENV_RPC_ONLY=true)"
+   "Creating instrumented provider - all RPC requests will be tracked"
+   "RPC request" with method and endpoint details
+   ```
+
+2. **Verify configuration**: Run `npm run cli -- diag config` to see which endpoints are configured
+
+3. **Test connectivity**: Run `npm run cli -- diag health` to ensure basic RPC calls succeed
+
+4. **Check metrics**: If requests are being made but not showing in dashboard, verify the endpoint URL matches exactly
+
 ## Configuration
 
 The bot uses two main configuration files:
 
 - **config/dexes.json** - DEX addresses, token addresses, and flashloan provider settings for zkSync Era mainnet
 - **config/strategy.json** - Arbitrage strategy parameters including minimum profit thresholds, gas limits, and safety settings
+
+Environment variables in `.env` take precedence over config files when `USE_ENV_RPC_ONLY=true`.
 
 See [Perplexity AI message.txt](./Perplexity%20AI%20message.txt) for the full implementation proposal and specifications.
 

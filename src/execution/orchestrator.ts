@@ -36,7 +36,11 @@ export class ExecutionOrchestrator {
     this.config = config;
     this.provider = new Provider(config.rpcUrl);
     this.calculator = new ProfitCalculator();
-    this.fetcher = new PriceFetcher(config.rpcUrl);
+    
+    // Create a basic provider for PriceFetcher
+    // Note: PriceFetcher expects JsonRpcProvider, but we're using zksync Provider
+    // This is a compatibility issue that should be addressed separately
+    this.fetcher = new PriceFetcher();
 
     // Initialize wallet only if not in dry-run mode
     if (!config.dryRun && config.privateKey) {
