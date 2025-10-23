@@ -5,6 +5,7 @@ import { PriceGapMonitor } from "../monitoring/priceGapMonitor.js";
 import { ExecutionOrchestrator } from "../execution/orchestrator.js";
 import { logger } from "../config/logger.js";
 import { loadConfig } from "../config/config.js";
+import { diagHealth, diagQuotes, diagConfig } from "./diag.js";
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 
 const program = new Command();
@@ -22,11 +23,12 @@ program
   .description("Run continuous price gap monitoring")
   .option("-d, --duration <hours>", "Duration in hours", "48")
   .option("--db <path>", "Database path", "./data/monitoring.sqlite")
+  .option("--rpc <url>", "Override RPC endpoint")
   .action(async (options) => {
     logger.info({ options }, "Starting monitor command");
 
     const duration = parseInt(options.duration);
-    const monitor = new PriceGapMonitor(options.db);
+    const monitor = new PriceGapMonitor(options.db, options.rpc);
 
     // Handle graceful shutdown
     process.on("SIGINT", () => {
@@ -113,6 +115,7 @@ program
   .description("Generate monitoring report from database")
   .option("--db <path>", "Database path", "./data/monitoring.sqlite")
   .option("-o, --output <path>", "Output JSON file path", "./monitoring-report.json")
+  .option("--rpc <url>", "Override RPC endpoint (not used for report generation)")
   .action((options) => {
     logger.info({ options }, "Generating monitoring report");
 
@@ -160,6 +163,54 @@ program
     logger.info("========================");
     
     process.exit(0);
+  });
+
+/**
+ * Diagnostics command - RPC and DEX testing
+ */
+const diagCommand = program
+  .command("diag")
+  .description("Diagnostic commands for RPC and DEX testing");
+
+diagCommand
+  .command("health")
+  .description("Test RPC connectivity and display metrics")
+  .option("--rpc <url>", "Override RPC endpoint")
+  .action(async (options) => {
+    try {
+      await diagHealth(options.rpc);
+      process.exit(0);
+    } catch (error) {
+      logger.error({ error }, "Health check failed");
+      process.exit(1);
+    }
+  });
+
+diagCommand
+  .command("quotes")
+  .description("Fetch quotes from all enabled DEXes for configured pairs")
+  .option("--rpc <url>", "Override RPC endpoint")
+  .action(async (options) => {
+    try {
+      await diagQuotes(options.rpc);
+      process.exit(0);
+    } catch (error) {
+      logger.error({ error }, "Quote test failed");
+      process.exit(1);
+    }
+  });
+
+diagCommand
+  .command("config")
+  .description("Display DEX and token configuration")
+  .action(() => {
+    try {
+      diagConfig();
+      process.exit(0);
+    } catch (error) {
+      logger.error({ error }, "Config display failed");
+      process.exit(1);
+    }
   });
 
 // Parse command-line arguments

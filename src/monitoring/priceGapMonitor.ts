@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { logger } from "../config/logger.js";
 import { PriceFetcher, DexPrice } from "../prices/fetcher.js";
 import { ProfitCalculator } from "../simulation/profitCalculator.js";
+import { createProvider } from "../providers/factory.js";
 import strategyConfig from "../../config/strategy.json" assert { type: "json" };
 import * as fs from "fs";
 import * as path from "path";
@@ -50,7 +51,7 @@ export class PriceGapMonitor {
   private startTime: number = 0;
   private dbPath: string;
 
-  constructor(dbPath: string = "./data/monitoring.sqlite") {
+  constructor(dbPath: string = "./data/monitoring.sqlite", rpcOverride?: string) {
     this.dbPath = dbPath;
     
     // Ensure directory exists
@@ -60,7 +61,11 @@ export class PriceGapMonitor {
     }
 
     this.db = new Database(dbPath);
-    this.fetcher = new PriceFetcher();
+    
+    // Use provider factory for consistent RPC selection
+    const provider = createProvider(rpcOverride);
+    this.fetcher = new PriceFetcher(provider);
+    
     this.calculator = new ProfitCalculator();
     this.initDatabase();
     logger.info({ dbPath }, "Price gap monitor initialized");

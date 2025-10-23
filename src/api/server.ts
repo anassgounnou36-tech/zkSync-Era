@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { logger } from "../config/logger.js";
 import { loadConfig } from "../config/config.js";
 import { AnalyticsDB } from "../analytics/db.js";
+import { metricsTracker } from "../monitoring/metrics.js";
 
 const config = loadConfig();
 
@@ -71,6 +72,22 @@ export async function createServer() {
     return {
       totalPnL: db.getTotalPnL().toString(),
       tradeCount: db.getTradeCount(),
+    };
+  });
+
+  // Get RPC metrics
+  fastify.get("/metrics", async () => {
+    const summary = metricsTracker.getSummary();
+    return {
+      rpc: {
+        totalRequests: summary.totalRequests,
+        successfulRequests: summary.successfulRequests,
+        failedRequests: summary.failedRequests,
+        averageDuration: summary.avgDuration,
+        byMethod: summary.byMethod,
+        byEndpoint: summary.byEndpoint,
+      },
+      timestamp: Date.now(),
     };
   });
 
