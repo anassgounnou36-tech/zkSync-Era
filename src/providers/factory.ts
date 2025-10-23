@@ -1,8 +1,6 @@
 import { JsonRpcProvider } from "ethers";
-import { loadConfig } from "../config/config.js";
 import { logger } from "../config/logger.js";
 import { metricsTracker } from "../monitoring/metrics.js";
-import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 
 /**
  * Instrumented JSON-RPC provider that tracks all requests
