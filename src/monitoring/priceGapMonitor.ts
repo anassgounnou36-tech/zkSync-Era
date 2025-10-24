@@ -114,7 +114,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN recognized INTEGER DEFAULT 0;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -122,7 +122,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN zeroSlipSpreadBps INTEGER;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -130,7 +130,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN slipAdjSpreadBps INTEGER;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -138,7 +138,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN usdPriceIn REAL;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -146,7 +146,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN usdPriceOut REAL;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -154,7 +154,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN pathA TEXT;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -162,7 +162,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN pathB TEXT;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -170,7 +170,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN feesA TEXT;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -178,7 +178,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN feesB TEXT;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -186,7 +186,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN dexA TEXT;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 
@@ -194,7 +194,7 @@ export class PriceGapMonitor {
       this.db.exec(`
         ALTER TABLE price_gaps ADD COLUMN dexB TEXT;
       `);
-    } catch (e) {
+    } catch {
       // Column already exists, ignore
     }
 

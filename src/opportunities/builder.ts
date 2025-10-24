@@ -2,7 +2,7 @@ import { JsonRpcProvider } from "ethers";
 import { logger } from "../config/logger.js";
 import { PriceFetcher, DexPrice } from "../prices/fetcher.js";
 import { UsdConverter } from "../utils/usdConverter.js";
-import { calculateGrossSpreadBps, applySlippage, formatAmount } from "../utils/math.js";
+import { calculateGrossSpreadBps, applySlippage } from "../utils/math.js";
 import strategyConfig from "../../config/strategy.json" assert { type: "json" };
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 
@@ -161,14 +161,12 @@ export class OpportunityBuilder {
     }
     
     // Calculate round-trip
-    const intermediateB = quoteAtoB.amountOut;
     const finalA = quoteBtoA.amountOut;
     
     // Zero-slippage spread
     const grossSpreadBps = calculateGrossSpreadBps(amountIn, finalA);
     
     // Slippage-adjusted spread
-    const intermediateBWithSlip = applySlippage(intermediateB, this.maxSlippageBps);
     // For the second leg, we need to get a new quote with the slippage-adjusted amount
     // For simplicity, we'll approximate by applying slippage to the final amount
     const finalAWithSlip = applySlippage(finalA, this.maxSlippageBps);

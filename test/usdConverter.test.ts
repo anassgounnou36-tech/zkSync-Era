@@ -57,10 +57,9 @@ describe("USD Converter", () => {
   });
 
   describe("USD Conversion Math", () => {
-    it("should calculate USDC value correctly (USDC = $1)", async () => {
+    it("should have correct metadata for USDC", async () => {
       // USDC should always be $1.00
       const usdcAddress = "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4";
-      const amount = 1000n * 10n ** 6n; // 1000 USDC
       
       // This will make an actual call, so we'll test the math logic separately
       // In a real test, we'd mock the fetcher
