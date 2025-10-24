@@ -23,6 +23,7 @@ program
   .description("Run continuous price gap monitoring")
   .option("-d, --duration <hours>", "Duration in hours (supports decimals, e.g., 0.2 for 12 minutes)", "48")
   .option("--db <path>", "Database path", "./data/monitoring.sqlite")
+  .option("--recognize-all", "Record all recognized opportunities even if below minProfitUSD", false)
   .action(async (options) => {
     logger.info({ options }, "Starting monitor command");
 
@@ -34,7 +35,7 @@ program
       process.exit(1);
     }
 
-    const monitor = new PriceGapMonitor(options.db);
+    const monitor = new PriceGapMonitor(options.db, undefined, options.recognizeAll);
 
     // Handle graceful shutdown
     process.on("SIGINT", () => {
@@ -218,6 +219,36 @@ diagCommand
       process.exit(0);
     } catch (error) {
       logger.error({ error }, "Config display failed");
+      process.exit(1);
+    }
+  });
+
+/**
+ * Scan-once command - single scan of all opportunities
+ */
+program
+  .command("scan-once")
+  .description("Scan all configured pairs once and display recognized opportunities")
+  .option("--pairs <pairs>", "Comma-separated list of pairs (e.g., WETH/USDC,USDC/USDT)")
+  .option("--dexes <dexes>", "Comma-separated list of DEXes to use")
+  .option("--amount <amount>", "Override flashloan amount (in wei)")
+  .option("--min-spread-bps <bps>", "Minimum spread in basis points to display", "0")
+  .option("--rpc <url>", "Override RPC endpoint (for testing only)")
+  .action(async (options) => {
+    logger.info({ options }, "Starting scan-once command");
+
+    try {
+      const { scanOnce } = await import("./scanOnce.js");
+      await scanOnce({
+        rpcOverride: options.rpc,
+        pairs: options.pairs ? options.pairs.split(",") : undefined,
+        dexes: options.dexes ? options.dexes.split(",") : undefined,
+        amount: options.amount,
+        minSpreadBps: parseInt(options.minSpreadBps),
+      });
+      process.exit(0);
+    } catch (error) {
+      logger.error({ error }, "scan-once failed");
       process.exit(1);
     }
   });

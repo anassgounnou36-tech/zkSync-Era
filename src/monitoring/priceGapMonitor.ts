@@ -50,9 +50,11 @@ export class PriceGapMonitor {
   private isRunning: boolean = false;
   private startTime: number = 0;
   private dbPath: string;
+  private recognizeAll: boolean;
 
-  constructor(dbPath: string = "./data/monitoring.sqlite", rpcOverride?: string) {
+  constructor(dbPath: string = "./data/monitoring.sqlite", rpcOverride?: string, recognizeAll: boolean = false) {
     this.dbPath = dbPath;
+    this.recognizeAll = recognizeAll;
     
     // Ensure directory exists
     const dir = path.dirname(dbPath);
@@ -68,7 +70,7 @@ export class PriceGapMonitor {
     
     this.calculator = new ProfitCalculator();
     this.initDatabase();
-    logger.info({ dbPath }, "Price gap monitor initialized");
+    logger.info({ dbPath, recognizeAll }, "Price gap monitor initialized");
   }
 
   /**
@@ -87,15 +89,116 @@ export class PriceGapMonitor {
         profitUSD REAL NOT NULL,
         status TEXT NOT NULL DEFAULT 'open',
         closedAt INTEGER,
-        decayTimeSeconds INTEGER
+        decayTimeSeconds INTEGER,
+        recognized INTEGER DEFAULT 0,
+        zeroSlipSpreadBps INTEGER,
+        slipAdjSpreadBps INTEGER,
+        usdPriceIn REAL,
+        usdPriceOut REAL,
+        pathA TEXT,
+        pathB TEXT,
+        feesA TEXT,
+        feesB TEXT,
+        dexA TEXT,
+        dexB TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_timestamp ON price_gaps(timestamp);
       CREATE INDEX IF NOT EXISTS idx_status ON price_gaps(status);
       CREATE INDEX IF NOT EXISTS idx_token_pair ON price_gaps(tokenA, tokenB);
+      CREATE INDEX IF NOT EXISTS idx_recognized ON price_gaps(recognized);
     `);
 
-    logger.info("Database schema initialized");
+    // Migrate existing tables if needed
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN recognized INTEGER DEFAULT 0;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN zeroSlipSpreadBps INTEGER;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN slipAdjSpreadBps INTEGER;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN usdPriceIn REAL;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN usdPriceOut REAL;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN pathA TEXT;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN pathB TEXT;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN feesA TEXT;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN feesB TEXT;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN dexA TEXT;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    try {
+      this.db.exec(`
+        ALTER TABLE price_gaps ADD COLUMN dexB TEXT;
+      `);
+    } catch {
+      // Column already exists, ignore
+    }
+
+    logger.info("Database schema initialized with migrations");
   }
 
   /**

@@ -45,6 +45,13 @@
         "quoter": "0x3d146FcE6c1006857750cBe8aF44f76a28041CCc",
         "fee": 0.0025,
         "enabled": true
+      },
+      "velocore": {
+        "name": "Velocore",
+        "router": "0x0000000000000000000000000000000000000000",
+        "pool": "0x0000000000000000000000000000000000000000",
+        "fee": 0.003,
+        "enabled": false
       }
     },
     "stableSymbols": ["USDC", "USDT"],
