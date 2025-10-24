@@ -75,6 +75,7 @@ Test RPC connectivity and view metrics:
 npm run cli -- diag health
 
 # Test quotes from all DEXes for configured pairs
+# Shows realistic multi-hop routes (e.g., WETH→USDC→USDT for PancakeSwap V3)
 npm run cli -- diag quotes
 
 # Test with custom amount (in wei)
@@ -89,6 +90,12 @@ npm run cli -- diag health --rpc https://custom-rpc.example.com
 # Display current configuration
 npm run cli -- diag config
 ```
+
+**New Features:**
+- PancakeSwap V3 now uses multi-hop quoting via USDC when direct pools lack liquidity
+- Displays human-readable amounts with proper decimal formatting
+- Shows per-DEX rate (e.g., "2000.123456 USDC per WETH")
+- Calculates and displays spread % between all successful quotes
 
 ### 3. Verify in Your Dashboard
 
@@ -170,11 +177,19 @@ The bot now includes comprehensive monitoring and execution capabilities:
 # Monitor for 2 hours
 npm run cli -- monitor --duration 2
 
+# Monitor for 12 minutes (fractional hours supported)
+npm run cli -- monitor --duration 0.2
+
+# Monitor for 30 minutes
+npm run cli -- monitor --duration 0.5
+
 # Monitor for default 48 hours
 npm run cli -- monitor
 ```
 
 Continuously scans configured token pairs, tracks arbitrage opportunities in SQLite with lifecycle tracking (open/closed), computes decay times, and generates hourly statistics.
+
+**Note:** The `--duration` flag now supports fractional hours (e.g., 0.2 for 12 minutes, 0.5 for 30 minutes).
 
 ### Execute Arbitrage
 

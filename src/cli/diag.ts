@@ -166,8 +166,20 @@ export async function diagQuotes(
           tokenBInfo.decimals, 
           pair.tokenB
         );
+        
+        // Calculate rate with proper decimals adjustment for human readability
+        // Use string conversion to avoid precision loss with very large numbers
+        // rate = amountOut (with tokenB decimals) per 1 amountIn (with tokenA decimals)
+        const amountOutStr = price.amountOut.toString();
+        const amountInStr = price.amountIn.toString();
+        
+        // Calculate using floating point only after decimal adjustment
+        const rateNumerator = parseFloat(amountOutStr) / (10 ** tokenBInfo.decimals);
+        const rateDenominator = parseFloat(amountInStr) / (10 ** tokenAInfo.decimals);
+        const rate = rateNumerator / rateDenominator;
+        
         logger.info(
-          `    ✓ ${price.dex.padEnd(15)}: ${formattedAmountOut.padEnd(25)} (rate: ${price.price.toFixed(6)})`
+          `    ✓ ${price.dex.padEnd(15)}: ${formattedAmountOut.padEnd(25)} (${rate.toFixed(6)} ${pair.tokenB} per ${pair.tokenA})`
         );
       } else {
         logger.info(`    ✗ ${price.dex.padEnd(15)}: ${price.error}`);

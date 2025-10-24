@@ -16,6 +16,7 @@ const SYNCSWAP_ROUTER_ABI = [
 
 const PANCAKE_QUOTER_V2_ABI = [
   "function quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96)) external returns (uint256 amountOut, uint160 sqrtPriceX96After, uint32 initializedTicksCrossed, uint256 gasEstimate)",
+  "function quoteExactInput(bytes path, uint256 amountIn) external returns (uint256 amountOut, uint160[] sqrtPriceX96AfterList, uint32[] initializedTicksCrossedList, uint256 gasEstimate)",
 ];
 
 export interface DexPrice {
@@ -68,6 +69,29 @@ export class PriceFetcher {
     const tokenOutLower = tokenOut.toLowerCase();
 
     return stablecoins.includes(tokenInLower) && stablecoins.includes(tokenOutLower);
+  }
+
+  /**
+   * Encode multi-hop path for PancakeSwap V3 Quoter
+   * Path format: tokenIn + fee + tokenOut [+ fee + nextToken ...]
+   * Each fee is uint24 (3 bytes)
+   */
+  private encodePancakeV3Path(tokens: string[], fees: number[]): string {
+    if (tokens.length !== fees.length + 1) {
+      throw new Error("Invalid path: tokens length must be fees length + 1");
+    }
+
+    let path = "0x";
+    for (let i = 0; i < fees.length; i++) {
+      // Add token address (20 bytes)
+      path += tokens[i].slice(2);
+      // Add fee (3 bytes, uint24)
+      path += fees[i].toString(16).padStart(6, "0");
+    }
+    // Add final token
+    path += tokens[tokens.length - 1].slice(2);
+    
+    return path;
   }
 
   /**
@@ -227,7 +251,7 @@ export class PriceFetcher {
 
   /**
    * Fetch price from PancakeSwap V3 using Quoter V2
-   * Uses the official Quoter contract for reliable off-chain quotes
+   * Tries both single-hop and multi-hop routes (via USDC) to find the best quote
    */
   async fetchPancakeSwapV3Price(
     tokenIn: string,
@@ -239,18 +263,21 @@ export class PriceFetcher {
       "Fetching price quote from Quoter V2"
     );
 
+    const quoter = new Contract(
+      this.config.dexes.pancakeswap_v3.quoter,
+      PANCAKE_QUOTER_V2_ABI,
+      this.provider
+    );
+
+    const fee = 2500; // 0.25% fee tier
+    const sqrtPriceLimitX96 = 0; // No limit
+
+    // Try single-hop first
+    let bestAmountOut = 0n;
+    let bestPath = "direct";
+    let bestError: string | undefined;
+
     try {
-      const quoter = new Contract(
-        this.config.dexes.pancakeswap_v3.quoter,
-        PANCAKE_QUOTER_V2_ABI,
-        this.provider
-      );
-
-      // Use fee tier 2500 (0.25%) by default
-      const fee = 2500;
-      const sqrtPriceLimitX96 = 0; // No limit
-
-      // Encode params as tuple for quoteExactInputSingle
       const params = {
         tokenIn,
         tokenOut,
@@ -259,20 +286,115 @@ export class PriceFetcher {
         sqrtPriceLimitX96,
       };
 
-      // Use staticCall to simulate the call (Quoter functions are not view/pure)
       const result = await quoter.quoteExactInputSingle.staticCall(params);
-      const amountOut = result[0]; // First return value is amountOut
-
+      bestAmountOut = BigInt(result[0].toString());
+      
       logger.debug(
         { 
           dex: "pancakeswap_v3", 
+          path: "single-hop",
           tokenIn, 
           tokenOut, 
           amountIn: amountIn.toString(), 
-          amountOut: amountOut.toString(),
+          amountOut: bestAmountOut.toString(),
+          fee
+        },
+        "Single-hop quote successful"
+      );
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.debug(
+        { 
+          dex: "pancakeswap_v3", 
+          path: "single-hop",
+          tokenIn, 
+          tokenOut,
+          error: errorMessage
+        },
+        "Single-hop quote failed"
+      );
+      bestError = errorMessage;
+    }
+
+    // Try multi-hop via USDC if single-hop failed or returned small amount
+    const usdcAddress = this.config.tokens.USDC.address;
+    const tokenInLower = tokenIn.toLowerCase();
+    const tokenOutLower = tokenOut.toLowerCase();
+    const usdcLower = usdcAddress.toLowerCase();
+
+    // Only try multi-hop if neither token is USDC and tokens are different
+    if (tokenInLower !== usdcLower && tokenOutLower !== usdcLower && tokenInLower !== tokenOutLower) {
+      try {
+        // Build path: tokenIn -> USDC -> tokenOut with fee 2500 for both hops
+        const path = this.encodePancakeV3Path(
+          [tokenIn, usdcAddress, tokenOut],
+          [fee, fee]
+        );
+
+        logger.debug(
+          { 
+            dex: "pancakeswap_v3", 
+            path: "multi-hop",
+            route: `${tokenIn} -> USDC -> ${tokenOut}`,
+            encodedPath: path
+          },
+          "Trying multi-hop quote"
+        );
+
+        const result = await quoter.quoteExactInput.staticCall(path, amountIn);
+        const multiHopAmountOut = BigInt(result[0].toString());
+
+        logger.debug(
+          { 
+            dex: "pancakeswap_v3", 
+            path: "multi-hop",
+            tokenIn, 
+            tokenOut, 
+            amountIn: amountIn.toString(), 
+            amountOut: multiHopAmountOut.toString(),
+            fees: [fee, fee]
+          },
+          "Multi-hop quote successful"
+        );
+
+        // Use multi-hop if it's better than single-hop
+        if (multiHopAmountOut > bestAmountOut) {
+          bestAmountOut = multiHopAmountOut;
+          bestPath = `multi-hop via USDC`;
+          bestError = undefined; // Clear error since we got a successful quote
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        logger.debug(
+          { 
+            dex: "pancakeswap_v3", 
+            path: "multi-hop",
+            tokenIn, 
+            tokenOut,
+            error: errorMessage
+          },
+          "Multi-hop quote failed"
+        );
+        // Don't update bestError if we already have a successful single-hop
+        if (bestAmountOut === 0n) {
+          bestError = errorMessage;
+        }
+      }
+    }
+
+    // Return the best result
+    if (bestAmountOut > 0n) {
+      logger.debug(
+        { 
+          dex: "pancakeswap_v3", 
+          selectedPath: bestPath,
+          tokenIn, 
+          tokenOut, 
+          amountIn: amountIn.toString(), 
+          amountOut: bestAmountOut.toString(),
           quoterAddress: this.config.dexes.pancakeswap_v3.quoter
         },
-        "Price quote successful from Quoter V2"
+        `Price quote successful using ${bestPath}`
       );
 
       return {
@@ -280,24 +402,21 @@ export class PriceFetcher {
         tokenIn,
         tokenOut,
         amountIn,
-        amountOut: BigInt(amountOut.toString()),
-        price: Number(amountOut) / Number(amountIn),
+        amountOut: bestAmountOut,
+        price: Number(bestAmountOut) / Number(amountIn),
         success: true,
       };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      
-      // Log revert details for debugging
+    } else {
       logger.warn(
         { 
           dex: "pancakeswap_v3", 
           tokenIn, 
           tokenOut, 
           amountIn: amountIn.toString(),
-          error: errorMessage,
+          error: bestError,
           quoterAddress: this.config.dexes.pancakeswap_v3.quoter
         },
-        "Price quote failed - Quoter reverted (pool may not exist or have insufficient liquidity)"
+        "All quote paths failed - pool may not exist or have insufficient liquidity"
       );
 
       return {
@@ -308,7 +427,7 @@ export class PriceFetcher {
         amountOut: 0n,
         price: 0,
         success: false,
-        error: errorMessage,
+        error: bestError,
       };
     }
   }
