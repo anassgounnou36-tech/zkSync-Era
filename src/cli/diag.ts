@@ -168,9 +168,14 @@ export async function diagQuotes(
         );
         
         // Calculate rate with proper decimals adjustment for human readability
+        // Use string conversion to avoid precision loss with very large numbers
         // rate = amountOut (with tokenB decimals) per 1 amountIn (with tokenA decimals)
-        const rateNumerator = Number(price.amountOut) / (10 ** tokenBInfo.decimals);
-        const rateDenominator = Number(price.amountIn) / (10 ** tokenAInfo.decimals);
+        const amountOutStr = price.amountOut.toString();
+        const amountInStr = price.amountIn.toString();
+        
+        // Calculate using floating point only after decimal adjustment
+        const rateNumerator = parseFloat(amountOutStr) / (10 ** tokenBInfo.decimals);
+        const rateDenominator = parseFloat(amountInStr) / (10 ** tokenAInfo.decimals);
         const rate = rateNumerator / rateDenominator;
         
         logger.info(
