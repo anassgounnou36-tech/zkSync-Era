@@ -1,17 +1,10 @@
 import { JsonRpcProvider, Contract } from "ethers";
 import { logger } from "../config/logger.js";
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
+import { getSyncSwapQuote } from "./adapters/syncswap.js";
 
 const MUTE_ROUTER_ABI = [
   "function getAmountsOut(uint256 amountIn, address[] calldata path, bool[] calldata stable) external view returns (uint256[] memory amounts)",
-];
-
-const SYNCSWAP_POOL_MASTER_ABI = [
-  "function getPool(address tokenA, address tokenB) external view returns (address pool)",
-];
-
-const SYNCSWAP_ROUTER_ABI = [
-  "function getAmountOut(uint256 amountIn, address tokenIn, address tokenOut) external view returns (uint256 amountOut)",
 ];
 
 const PANCAKE_QUOTER_V2_ABI = [
@@ -28,6 +21,11 @@ export interface DexPrice {
   price: number;
   success: boolean;
   error?: string;
+  metadata?: {
+    poolAddress?: string;
+    poolType?: string;
+    method?: string;
+  };
 }
 
 export interface ArbitragePair {
@@ -44,8 +42,9 @@ export interface ArbitragePair {
 export class PriceFetcher {
   private provider: JsonRpcProvider;
   private config: typeof dexesConfig.zkSyncEra;
+  private verbose: boolean;
 
-  constructor(provider?: JsonRpcProvider) {
+  constructor(provider?: JsonRpcProvider, options: { verbose?: boolean } = {}) {
     // Accept a provider instance, or create a fallback (for backward compatibility)
     if (provider) {
       this.provider = provider;
@@ -54,6 +53,7 @@ export class PriceFetcher {
       this.provider = new JsonRpcProvider(dexesConfig.zkSyncEra.rpcUrl);
     }
     this.config = dexesConfig.zkSyncEra;
+    this.verbose = options.verbose || false;
   }
 
   /**
@@ -165,7 +165,7 @@ export class PriceFetcher {
   }
 
   /**
-   * Fetch price from SyncSwap V1 using PoolMaster->getPool + Router->getAmountOut
+   * Fetch price from SyncSwap V1 using new resilient quote engine
    */
   async fetchSyncSwapV1Price(
     tokenIn: string,
@@ -178,20 +178,61 @@ export class PriceFetcher {
     );
 
     try {
-      // Get pool address from PoolMaster
-      const poolMaster = new Contract(
-        this.config.dexes.syncswap_v1.poolMaster,
-        SYNCSWAP_POOL_MASTER_ABI,
-        this.provider
+      // Get token symbols for stable pair detection
+      const tokenInSymbol = this.getTokenSymbol(tokenIn);
+      const tokenOutSymbol = this.getTokenSymbol(tokenOut);
+
+      const result = await getSyncSwapQuote(
+        this.provider,
+        tokenIn,
+        tokenOut,
+        amountIn,
+        {
+          tokenInSymbol,
+          tokenOutSymbol,
+          verbose: this.verbose,
+        }
       );
 
-      const poolAddress = await poolMaster.getPool(tokenIn, tokenOut);
-
-      // Check if pool exists
-      if (!poolAddress || poolAddress === "0x0000000000000000000000000000000000000000") {
+      if (result.success) {
         logger.debug(
-          { dex: "syncswap_v1", tokenIn, tokenOut },
-          "Price quote failed - pool not found"
+          {
+            dex: "syncswap_v1",
+            tokenIn,
+            tokenOut,
+            amountIn: amountIn.toString(),
+            amountOut: result.amountOut.toString(),
+            poolAddress: result.poolAddress,
+            poolType: result.poolType,
+            method: result.method,
+          },
+          "Price quote successful"
+        );
+
+        return {
+          dex: "syncswap_v1",
+          tokenIn,
+          tokenOut,
+          amountIn,
+          amountOut: result.amountOut,
+          price: Number(result.amountOut) / Number(amountIn),
+          success: true,
+          metadata: {
+            poolAddress: result.poolAddress,
+            poolType: result.poolType,
+            method: result.method,
+          },
+        };
+      } else {
+        logger.debug(
+          {
+            dex: "syncswap_v1",
+            tokenIn,
+            tokenOut,
+            error: result.error,
+            disabled: result.disabled,
+          },
+          "Price quote failed"
         );
 
         return {
@@ -202,38 +243,14 @@ export class PriceFetcher {
           amountOut: 0n,
           price: 0,
           success: false,
-          error: "Pool not found",
+          error: result.error,
         };
       }
-
-      // Get quote from router
-      const router = new Contract(
-        this.config.dexes.syncswap_v1.router,
-        SYNCSWAP_ROUTER_ABI,
-        this.provider
-      );
-
-      const amountOut = await router.getAmountOut(amountIn, tokenIn, tokenOut);
-
-      logger.debug(
-        { dex: "syncswap_v1", tokenIn, tokenOut, amountIn: amountIn.toString(), amountOut: amountOut.toString() },
-        "Price quote successful"
-      );
-
-      return {
-        dex: "syncswap_v1",
-        tokenIn,
-        tokenOut,
-        amountIn,
-        amountOut: BigInt(amountOut.toString()),
-        price: Number(amountOut) / Number(amountIn),
-        success: true,
-      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.debug(
         { dex: "syncswap_v1", tokenIn, tokenOut, error: errorMessage },
-        "Price quote failed"
+        "Price quote failed with exception"
       );
 
       return {
@@ -529,6 +546,19 @@ export class PriceFetcher {
    */
   getTokenInfo(symbol: string) {
     return this.config.tokens[symbol as keyof typeof this.config.tokens];
+  }
+
+  /**
+   * Get token symbol by address
+   */
+  private getTokenSymbol(address: string): string | undefined {
+    const addressLower = address.toLowerCase();
+    for (const [symbol, token] of Object.entries(this.config.tokens)) {
+      if (token.address.toLowerCase() === addressLower) {
+        return symbol;
+      }
+    }
+    return undefined;
   }
 
   /**

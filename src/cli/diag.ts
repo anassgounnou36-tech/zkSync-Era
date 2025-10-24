@@ -101,7 +101,9 @@ function formatSpread(price1: number, price2: number): string {
 export async function diagQuotes(
   rpcOverride?: string, 
   amountOverride?: string,
-  dexFilter?: string
+  dexFilter?: string,
+  pairFilter?: string,
+  syncswapVerbose?: boolean
 ): Promise<void> {
   logger.info("=== DEX Quote Diagnostics ===");
 
@@ -111,14 +113,30 @@ export async function diagQuotes(
 
   // Create provider and fetcher
   const provider = createProvider(rpcOverride);
-  const fetcher = new PriceFetcher(provider);
+  const fetcher = new PriceFetcher(provider, { verbose: syncswapVerbose || false });
 
   const config = strategyConfig.arbitrage;
-  const tokenPairs = config.targetPairs;
+  let tokenPairs = config.targetPairs;
+
+  // Filter by pair if specified
+  if (pairFilter) {
+    const [tokenA, tokenB] = pairFilter.split('/');
+    tokenPairs = tokenPairs.filter(
+      pair => (pair.tokenA === tokenA && pair.tokenB === tokenB) ||
+              (pair.tokenA === tokenB && pair.tokenB === tokenA)
+    );
+    if (tokenPairs.length === 0) {
+      logger.warn(`No matching pair found for: ${pairFilter}`);
+      return;
+    }
+  }
 
   logger.info(`Testing ${tokenPairs.length} token pairs across all enabled DEXes`);
   if (dexFilter) {
     logger.info(`Filtering for DEX: ${dexFilter}`);
+  }
+  if (syncswapVerbose) {
+    logger.info(`SyncSwap verbose mode: enabled`);
   }
   logger.info("=====================================");
 
@@ -178,8 +196,19 @@ export async function diagQuotes(
         const rateDenominator = parseFloat(amountInStr) / (10 ** tokenAInfo.decimals);
         const rate = rateNumerator / rateDenominator;
         
+        let metadataStr = "";
+        if (price.metadata) {
+          const parts: string[] = [];
+          if (price.metadata.poolType) parts.push(`pool: ${price.metadata.poolType}`);
+          if (price.metadata.method) parts.push(`method: ${price.metadata.method}`);
+          if (price.metadata.poolAddress) parts.push(`addr: ${price.metadata.poolAddress.slice(0, 10)}...`);
+          if (parts.length > 0) {
+            metadataStr = ` [${parts.join(', ')}]`;
+          }
+        }
+        
         logger.info(
-          `    ✓ ${price.dex.padEnd(15)}: ${formattedAmountOut.padEnd(25)} (${rate.toFixed(6)} ${pair.tokenB} per ${pair.tokenA})`
+          `    ✓ ${price.dex.padEnd(15)}: ${formattedAmountOut.padEnd(25)} (${rate.toFixed(6)} ${pair.tokenB} per ${pair.tokenA})${metadataStr}`
         );
       } else {
         logger.info(`    ✗ ${price.dex.padEnd(15)}: ${price.error}`);

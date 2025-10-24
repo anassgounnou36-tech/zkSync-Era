@@ -17,6 +17,8 @@
         "name": "SyncSwap V1",
         "router": "0x2da10A1e27bF85cEdD8FFb1AbBe97e53391C0295",
         "factory": "0xf2DAd89f2788a8CD54625C60b55cD3d2D0ACa7Cb",
+        "classicFactory": "0xf2DAd89f2788a8CD54625C60b55cD3d2D0ACa7Cb",
+        "stableFactory": "0x5b9f21d407F35b10CbfDDca17D5D84b129356ea3",
         "poolMaster": "0xbB05918E9B4bA9Fe2c8384d223f0844867909Ffb",
         "fee": 0.003,
         "enabled": true
@@ -45,6 +47,7 @@
         "enabled": true
       }
     },
+    "stableSymbols": ["USDC", "USDT"],
     "tokens": {
       "WETH": {
         "address": "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91",
