@@ -84,6 +84,12 @@ npm run cli -- diag quotes --amount 1000000000000000000
 # Filter quotes by specific DEX
 npm run cli -- diag quotes --dex pancakeswap_v3
 
+# Filter by specific pair
+npm run cli -- diag quotes --pair USDC/USDT
+
+# Enable verbose SyncSwap diagnostics (shows pool discovery, ABI probing, fallback methods)
+npm run cli -- diag quotes --dex syncswap_v1 --syncswap-verbose
+
 # Override RPC for testing (diag commands only)
 npm run cli -- diag health --rpc https://custom-rpc.example.com
 
@@ -96,6 +102,7 @@ npm run cli -- diag config
 - Displays human-readable amounts with proper decimal formatting
 - Shows per-DEX rate (e.g., "2000.123456 USDC per WETH")
 - Calculates and displays spread % between all successful quotes
+- SyncSwap resilient quoting with multi-ABI probing, off-chain fallback, and auto-disable (see TROUBLESHOOTING.md)
 
 ### 3. Verify in Your Dashboard
 

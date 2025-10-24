@@ -197,9 +197,11 @@ diagCommand
   .option("--rpc <url>", "Override RPC endpoint (for testing only)")
   .option("--amount <amount>", "Override amount to quote (in wei)")
   .option("--dex <name>", "Filter by specific DEX name")
+  .option("--pair <pair>", "Filter by specific pair (e.g., USDC/USDT)")
+  .option("--syncswap-verbose", "Enable verbose logging for SyncSwap probing", false)
   .action(async (options) => {
     try {
-      await diagQuotes(options.rpc, options.amount, options.dex);
+      await diagQuotes(options.rpc, options.amount, options.dex, options.pair, options.syncswapVerbose);
       process.exit(0);
     } catch (error) {
       logger.error({ error }, "Quote test failed");
