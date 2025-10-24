@@ -268,7 +268,7 @@ export class PriceFetcher {
 
   /**
    * Fetch price from PancakeSwap V3 using Quoter V2
-   * Tries both single-hop and multi-hop routes (via USDC) to find the best quote
+   * Tries multiple fee tiers and multi-hop routes (via WETH, USDC, USDT) to find the best quote
    */
   async fetchPancakeSwapV3Price(
     tokenIn: string,
@@ -286,115 +286,138 @@ export class PriceFetcher {
       this.provider
     );
 
-    const fee = 2500; // 0.25% fee tier
+    const feeTiers = [500, 2500]; // 0.05% and 0.25% fee tiers
     const sqrtPriceLimitX96 = 0; // No limit
 
-    // Try single-hop first
     let bestAmountOut = 0n;
     let bestPath = "direct";
+    let bestFees: number[] = [];
     let bestError: string | undefined;
 
-    try {
-      const params = {
-        tokenIn,
-        tokenOut,
-        amountIn,
-        fee,
-        sqrtPriceLimitX96,
-      };
-
-      const result = await quoter.quoteExactInputSingle.staticCall(params);
-      bestAmountOut = BigInt(result[0].toString());
-      
-      logger.debug(
-        { 
-          dex: "pancakeswap_v3", 
-          path: "single-hop",
-          tokenIn, 
-          tokenOut, 
-          amountIn: amountIn.toString(), 
-          amountOut: bestAmountOut.toString(),
-          fee
-        },
-        "Single-hop quote successful"
-      );
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.debug(
-        { 
-          dex: "pancakeswap_v3", 
-          path: "single-hop",
-          tokenIn, 
-          tokenOut,
-          error: errorMessage
-        },
-        "Single-hop quote failed"
-      );
-      bestError = errorMessage;
-    }
-
-    // Try multi-hop via USDC if single-hop failed or returned small amount
-    const usdcAddress = this.config.tokens.USDC.address;
-    const tokenInLower = tokenIn.toLowerCase();
-    const tokenOutLower = tokenOut.toLowerCase();
-    const usdcLower = usdcAddress.toLowerCase();
-
-    // Only try multi-hop if neither token is USDC and tokens are different
-    if (tokenInLower !== usdcLower && tokenOutLower !== usdcLower && tokenInLower !== tokenOutLower) {
+    // Try single-hop with multiple fee tiers
+    for (const fee of feeTiers) {
       try {
-        // Build path: tokenIn -> USDC -> tokenOut with fee 2500 for both hops
-        const path = this.encodePancakeV3Path(
-          [tokenIn, usdcAddress, tokenOut],
-          [fee, fee]
-        );
+        const params = {
+          tokenIn,
+          tokenOut,
+          amountIn,
+          fee,
+          sqrtPriceLimitX96,
+        };
 
+        const result = await quoter.quoteExactInputSingle.staticCall(params);
+        const amountOut = BigInt(result[0].toString());
+        
+        if (amountOut > bestAmountOut) {
+          bestAmountOut = amountOut;
+          bestPath = `direct (fee: ${fee})`;
+          bestFees = [fee];
+          bestError = undefined;
+        }
+        
         logger.debug(
           { 
             dex: "pancakeswap_v3", 
-            path: "multi-hop",
-            route: `${tokenIn} -> USDC -> ${tokenOut}`,
-            encodedPath: path
-          },
-          "Trying multi-hop quote"
-        );
-
-        const result = await quoter.quoteExactInput.staticCall(path, amountIn);
-        const multiHopAmountOut = BigInt(result[0].toString());
-
-        logger.debug(
-          { 
-            dex: "pancakeswap_v3", 
-            path: "multi-hop",
+            path: "single-hop",
             tokenIn, 
             tokenOut, 
             amountIn: amountIn.toString(), 
-            amountOut: multiHopAmountOut.toString(),
-            fees: [fee, fee]
+            amountOut: amountOut.toString(),
+            fee
           },
-          "Multi-hop quote successful"
+          "Single-hop quote successful"
         );
-
-        // Use multi-hop if it's better than single-hop
-        if (multiHopAmountOut > bestAmountOut) {
-          bestAmountOut = multiHopAmountOut;
-          bestPath = `multi-hop via USDC`;
-          bestError = undefined; // Clear error since we got a successful quote
-        }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
         logger.debug(
           { 
             dex: "pancakeswap_v3", 
-            path: "multi-hop",
+            path: "single-hop",
             tokenIn, 
             tokenOut,
+            fee,
             error: errorMessage
           },
-          "Multi-hop quote failed"
+          "Single-hop quote failed"
         );
-        // Don't update bestError if we already have a successful single-hop
         if (bestAmountOut === 0n) {
           bestError = errorMessage;
+        }
+      }
+    }
+
+    // Try multi-hop via WETH, USDC, and USDT
+    const intermediateTokens = [
+      { address: this.config.tokens.WETH.address, symbol: "WETH" },
+      { address: this.config.tokens.USDC.address, symbol: "USDC" },
+      { address: this.config.tokens.USDT.address, symbol: "USDT" },
+    ];
+
+    const tokenInLower = tokenIn.toLowerCase();
+    const tokenOutLower = tokenOut.toLowerCase();
+
+    for (const intermediate of intermediateTokens) {
+      const intermediateLower = intermediate.address.toLowerCase();
+      
+      // Skip if either token is the intermediate or if tokens are the same
+      if (tokenInLower === intermediateLower || 
+          tokenOutLower === intermediateLower || 
+          tokenInLower === tokenOutLower) {
+        continue;
+      }
+
+      // Try different fee tier combinations
+      for (const fee1 of feeTiers) {
+        for (const fee2 of feeTiers) {
+          try {
+            const path = this.encodePancakeV3Path(
+              [tokenIn, intermediate.address, tokenOut],
+              [fee1, fee2]
+            );
+
+            logger.debug(
+              { 
+                dex: "pancakeswap_v3", 
+                path: "multi-hop",
+                route: `${tokenIn} -> ${intermediate.symbol} -> ${tokenOut}`,
+                fees: [fee1, fee2]
+              },
+              "Trying multi-hop quote"
+            );
+
+            const result = await quoter.quoteExactInput.staticCall(path, amountIn);
+            const amountOut = BigInt(result[0].toString());
+
+            if (amountOut > bestAmountOut) {
+              bestAmountOut = amountOut;
+              bestPath = `multi-hop via ${intermediate.symbol}`;
+              bestFees = [fee1, fee2];
+              bestError = undefined;
+            }
+
+            logger.debug(
+              { 
+                dex: "pancakeswap_v3", 
+                path: "multi-hop",
+                intermediate: intermediate.symbol,
+                amountOut: amountOut.toString(),
+                fees: [fee1, fee2]
+              },
+              "Multi-hop quote successful"
+            );
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+            logger.debug(
+              { 
+                dex: "pancakeswap_v3", 
+                path: "multi-hop",
+                intermediate: intermediate.symbol,
+                fees: [fee1, fee2],
+                error: errorMessage
+              },
+              "Multi-hop quote failed"
+            );
+          }
         }
       }
     }
@@ -405,6 +428,7 @@ export class PriceFetcher {
         { 
           dex: "pancakeswap_v3", 
           selectedPath: bestPath,
+          fees: bestFees,
           tokenIn, 
           tokenOut, 
           amountIn: amountIn.toString(), 
@@ -422,6 +446,10 @@ export class PriceFetcher {
         amountOut: bestAmountOut,
         price: Number(bestAmountOut) / Number(amountIn),
         success: true,
+        metadata: {
+          poolAddress: bestPath,
+          method: bestPath,
+        },
       };
     } else {
       logger.warn(

@@ -222,5 +222,35 @@ diagCommand
     }
   });
 
+/**
+ * Scan-once command - single scan of all opportunities
+ */
+program
+  .command("scan-once")
+  .description("Scan all configured pairs once and display recognized opportunities")
+  .option("--pairs <pairs>", "Comma-separated list of pairs (e.g., WETH/USDC,USDC/USDT)")
+  .option("--dexes <dexes>", "Comma-separated list of DEXes to use")
+  .option("--amount <amount>", "Override flashloan amount (in wei)")
+  .option("--min-spread-bps <bps>", "Minimum spread in basis points to display", "0")
+  .option("--rpc <url>", "Override RPC endpoint (for testing only)")
+  .action(async (options) => {
+    logger.info({ options }, "Starting scan-once command");
+
+    try {
+      const { scanOnce } = await import("./scanOnce.js");
+      await scanOnce({
+        rpcOverride: options.rpc,
+        pairs: options.pairs ? options.pairs.split(",") : undefined,
+        dexes: options.dexes ? options.dexes.split(",") : undefined,
+        amount: options.amount,
+        minSpreadBps: parseInt(options.minSpreadBps),
+      });
+      process.exit(0);
+    } catch (error) {
+      logger.error({ error }, "scan-once failed");
+      process.exit(1);
+    }
+  });
+
 // Parse command-line arguments
 program.parse();
