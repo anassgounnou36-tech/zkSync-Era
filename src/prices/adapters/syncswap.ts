@@ -59,8 +59,9 @@ const MAX_CONSECUTIVE_ERRORS = 5;
 const CLASSIC_FACTORY = "0xf2DAd89f2788a8CD54625C60b55cD3d2D0ACa7Cb";
 const STABLE_FACTORY = "0x5b9f21d407F35b10CbfDDca17D5D84b129356ea3";
 
-// Stable symbols for preferring stable pools
-const STABLE_SYMBOLS = ["USDC", "USDT"];
+// Stable symbols for preferring stable pools (imported from config)
+import dexesConfig from "../../../config/dexes.json" assert { type: "json" };
+const STABLE_SYMBOLS = dexesConfig.zkSyncEra.stableSymbols;
 
 /**
  * Check if a pair is disabled due to repeated failures
@@ -197,7 +198,7 @@ async function probeQuoteABIs(
   // Try ABI A: getAmountOut(uint256 amountIn, address tokenIn)
   try {
     const contract = new Contract(poolAddress, QUOTE_ABI_A, provider);
-    const result = await contract.getAmountOut.staticCall(amountIn, tokenIn);
+    const result = await contract.getAmountOut(amountIn, tokenIn);
     const amountOut = BigInt(result.toString());
     if (verbose) {
       logger.debug(
@@ -218,7 +219,7 @@ async function probeQuoteABIs(
   // Try ABI B: getAmountOut(address tokenIn, address tokenOut, uint256 amountIn)
   try {
     const contract = new Contract(poolAddress, QUOTE_ABI_B, provider);
-    const result = await contract.getAmountOut.staticCall(
+    const result = await contract.getAmountOut(
       tokenIn,
       tokenOut,
       amountIn
@@ -346,9 +347,9 @@ function calculateConstantProductQuote(
   tokenIn: string,
   amountIn: bigint
 ): bigint {
-  // Determine which reserve is for tokenIn
-  const isToken0 =
-    tokenIn.toLowerCase() === state.token0.toLowerCase();
+  // Normalize addresses once for comparison
+  const tokenInLower = tokenIn.toLowerCase();
+  const isToken0 = tokenInLower === state.token0.toLowerCase();
   const reserveIn = isToken0 ? state.reserve0 : state.reserve1;
   const reserveOut = isToken0 ? state.reserve1 : state.reserve0;
 
@@ -357,8 +358,10 @@ function calculateConstantProductQuote(
   const amountInAfterFee = (amountIn * (10000n - feeBps)) / 10000n;
 
   // Constant product: amountOut = (amountInAfterFee * reserveOut) / (reserveIn + amountInAfterFee)
-  const amountOut =
-    (amountInAfterFee * reserveOut) / (reserveIn + amountInAfterFee);
+  // Use parentheses to control evaluation order and avoid potential overflow
+  const numerator = amountInAfterFee * reserveOut;
+  const denominator = reserveIn + amountInAfterFee;
+  const amountOut = numerator / denominator;
 
   return amountOut;
 }
