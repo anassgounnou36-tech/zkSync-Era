@@ -52,6 +52,26 @@ describe("PriceFetcher", () => {
     });
   });
 
+  describe("PancakeSwap V3 path encoding", () => {
+    it("should correctly encode multi-hop path", () => {
+      const tokens = [
+        "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91", // WETH
+        "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4", // USDC
+        "0x493257fD37EDB34451f62EDf8D2a0C418852bA4C", // USDT
+      ];
+      const fees = [2500, 2500];
+
+      // Access private method for testing
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const path = (fetcher as any).encodePancakeV3Path(tokens, fees);
+
+      expect(path).toMatch(/^0x[0-9a-f]+$/);
+      // Path should be: 20 bytes (token) + 3 bytes (fee) + 20 bytes (token) + 3 bytes (fee) + 20 bytes (token)
+      // = 66 bytes = 132 hex chars + "0x" = 134 chars total
+      expect(path.length).toBe(134);
+    });
+  });
+
   describe("Mute stable pair detection", () => {
     it("should detect USDC/USDT as stable pair", async () => {
       const usdcAddress = "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4";
