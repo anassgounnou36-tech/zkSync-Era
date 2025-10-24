@@ -91,4 +91,34 @@ describe("PriceFetcher", () => {
       expect(prices.every(p => p.dex)).toBe(true);
     });
   });
+
+  describe("Path encoding for PancakeSwap V3", () => {
+    it("should encode multi-hop path correctly", () => {
+      const tokens = [
+        "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91", // WETH
+        "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4", // USDC
+        "0x493257fD37EDB34451f62EDf8D2a0C418852bA4C", // USDT
+      ];
+      const fees = [2500, 2500];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const path = (fetcher as any).encodePancakeV3Path(tokens, fees);
+
+      expect(path).toBeDefined();
+      expect(path.startsWith("0x")).toBe(true);
+      // Path should be: 20 bytes (token) + 3 bytes (fee) + 20 bytes (token) + 3 bytes (fee) + 20 bytes (token)
+      // = 20 + 3 + 20 + 3 + 20 = 66 bytes = 132 hex chars + "0x" prefix = 134 chars
+      expect(path.length).toBe(134);
+    });
+
+    it("should throw error for invalid path parameters", () => {
+      const tokens = ["0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91", "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4"];
+      const fees = [2500, 2500, 2500]; // Too many fees
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect(() => (fetcher as any).encodePancakeV3Path(tokens, fees)).toThrow(
+        "Invalid path: tokens length must be fees length + 1"
+      );
+    });
+  });
 });
