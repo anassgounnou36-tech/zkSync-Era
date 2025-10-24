@@ -170,11 +170,14 @@ The bot now includes comprehensive monitoring and execution capabilities:
 # Monitor for 2 hours
 npm run cli -- monitor --duration 2
 
+# Monitor for 12 minutes (0.2 hours)
+npm run cli -- monitor --duration 0.2
+
 # Monitor for default 48 hours
 npm run cli -- monitor
 ```
 
-Continuously scans configured token pairs, tracks arbitrage opportunities in SQLite with lifecycle tracking (open/closed), computes decay times, and generates hourly statistics.
+Continuously scans configured token pairs, tracks arbitrage opportunities in SQLite with lifecycle tracking (open/closed), computes decay times, and generates hourly statistics. The `--duration` flag supports fractional hours (e.g., 0.2 = 12 minutes) for flexible monitoring periods.
 
 ### Execute Arbitrage
 
@@ -210,8 +213,10 @@ Displays current bot configuration including enabled DEXes, RPC endpoints, and t
 - **SyncSwap Vault** flashloan integration with multi-token support (0% fee)
 - **DEX Integration**: 
   - Mute.io with automatic stable-pair detection (USDC/USDT uses stable=true)
-  - SyncSwap V1 price fetching via PoolMaster->getPool + Router->getAmountOut
-  - PancakeSwap V3 reliable quotes via Quoter V2 contract (0x3d146FcE6c1006857750cBe8aF44f76a28041CCc)
+  - SyncSwap V1 price fetching via PoolMaster->getPool + Router->getAmountOut with robust error handling
+  - PancakeSwap V3 multi-hop quoting via Quoter V2 contract (0x3d146FcE6c1006857750cBe8aF44f76a28041CCc)
+    - Tries both single-hop and multi-hop (via USDC) paths
+    - Automatically selects best quote for improved liquidity
 - Arbitrage executor with token/pool whitelists, slippage guard, SafeERC20
 - Flashloan router with `executeFlashloanMulti(tokens[], amounts[], data)` and `receiveFlashLoan` callback
 - **Live price fetching** from DEXes with graceful error handling

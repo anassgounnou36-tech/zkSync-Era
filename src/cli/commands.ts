@@ -21,12 +21,12 @@ program
 program
   .command("monitor")
   .description("Run continuous price gap monitoring")
-  .option("-d, --duration <hours>", "Duration in hours", "48")
+  .option("-d, --duration <hours>", "Duration in hours (supports decimals, e.g., 0.2 = 12 minutes)", "48")
   .option("--db <path>", "Database path", "./data/monitoring.sqlite")
   .action(async (options) => {
     logger.info({ options }, "Starting monitor command");
 
-    const duration = parseInt(options.duration);
+    const duration = parseFloat(options.duration);
     const monitor = new PriceGapMonitor(options.db);
 
     // Handle graceful shutdown
