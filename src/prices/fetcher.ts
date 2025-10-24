@@ -271,8 +271,11 @@ export class PriceFetcher {
     const fee = 2500; // 0.25% fee tier
     const sqrtPriceLimitX96 = 0; // No limit
 
-    // Get USDC address for multi-hop
+    // Cache lowercase addresses for comparison
     const usdcAddress = this.config.tokens.USDC.address;
+    const usdcLower = usdcAddress.toLowerCase();
+    const tokenInLower = tokenIn.toLowerCase();
+    const tokenOutLower = tokenOut.toLowerCase();
 
     let bestAmountOut = 0n;
     let bestPath = "single-hop";
@@ -315,8 +318,8 @@ export class PriceFetcher {
 
     // Try multi-hop via USDC if tokens are not USDC and not a direct stable pair
     const shouldTryMultiHop = 
-      tokenIn.toLowerCase() !== usdcAddress.toLowerCase() &&
-      tokenOut.toLowerCase() !== usdcAddress.toLowerCase() &&
+      tokenInLower !== usdcLower &&
+      tokenOutLower !== usdcLower &&
       !this.isStablePair(tokenIn, tokenOut);
 
     if (shouldTryMultiHop) {
