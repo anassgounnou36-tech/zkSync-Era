@@ -21,55 +21,52 @@ describe("Provider Factory", () => {
     expect(urls.httpUrl).toBe(customRpc);
   });
 
-  it("should use environment RPC when USE_ENV_RPC_ONLY is true", () => {
-    process.env.USE_ENV_RPC_ONLY = "true";
+  it("should use environment RPC when ZKSYNC_RPC_HTTP is set", () => {
     process.env.ZKSYNC_RPC_HTTP = "https://env-rpc.example.com";
     
     const urls = getSelectedRpcUrls();
     expect(urls.httpUrl).toBe("https://env-rpc.example.com");
   });
 
-  it("should throw error when USE_ENV_RPC_ONLY is true but ZKSYNC_RPC_HTTP is not set", () => {
-    process.env.USE_ENV_RPC_ONLY = "true";
+  it("should throw error when ZKSYNC_RPC_HTTP is not set", () => {
     delete process.env.ZKSYNC_RPC_HTTP;
     
     expect(() => getSelectedRpcUrls()).toThrow(
-      "USE_ENV_RPC_ONLY is true but ZKSYNC_RPC_HTTP is not set"
+      "ZKSYNC_RPC_HTTP must be set in environment variables"
     );
   });
 
-  it("should prefer environment RPC over config when set", () => {
-    process.env.USE_ENV_RPC_ONLY = "false";
+  it("should use environment RPC with both HTTP and WS", () => {
     process.env.ZKSYNC_RPC_HTTP = "https://env-preference.example.com";
+    process.env.ZKSYNC_RPC_WS = "wss://env-ws.example.com";
     
     const urls = getSelectedRpcUrls();
     expect(urls.httpUrl).toBe("https://env-preference.example.com");
+    expect(urls.wsUrl).toBe("wss://env-ws.example.com");
   });
 
-  it("should fall back to config when env variables are not set", () => {
-    delete process.env.USE_ENV_RPC_ONLY;
+  it("should require ZKSYNC_RPC_HTTP with clear error message", () => {
     delete process.env.ZKSYNC_RPC_HTTP;
-    delete process.env.ZKSYNC_ERA_RPC_URL;
     
-    const urls = getSelectedRpcUrls();
-    // Should use dexes.json fallback
-    expect(urls.httpUrl).toBe("https://mainnet.era.zksync.io");
+    expect(() => getSelectedRpcUrls()).toThrow(/ZKSYNC_RPC_HTTP must be set/);
+    expect(() => getSelectedRpcUrls()).toThrow(/No config fallback is supported/);
   });
 
   it("should create an instrumented provider", () => {
+    process.env.ZKSYNC_RPC_HTTP = "https://test-rpc.example.com";
+    
     const provider = createProvider();
     
     expect(provider).toBeDefined();
     expect(typeof provider.send).toBe("function");
   });
 
-  it("should include WebSocket URL when available", () => {
-    process.env.USE_ENV_RPC_ONLY = "true";
+  it("should work with only HTTP URL when WS is not set", () => {
     process.env.ZKSYNC_RPC_HTTP = "https://env-rpc.example.com";
-    process.env.ZKSYNC_RPC_WS = "wss://env-ws.example.com";
+    delete process.env.ZKSYNC_RPC_WS;
     
     const urls = getSelectedRpcUrls();
     expect(urls.httpUrl).toBe("https://env-rpc.example.com");
-    expect(urls.wsUrl).toBe("wss://env-ws.example.com");
+    expect(urls.wsUrl).toBeUndefined();
   });
 });

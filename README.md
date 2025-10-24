@@ -43,25 +43,28 @@ npm run start:cli
 
 See docs/GETTING_STARTED.md and docs/DEPLOYMENT.md for details.
 
-## Verify Your RPC is Used
+## RPC Selection: Environment-Only
 
-To ensure your bot is using the correct RPC endpoint (e.g., Alchemy) and that requests are visible in your dashboard:
+The bot exclusively uses RPC endpoints from environment variables. There is no fallback to config files - `ZKSYNC_RPC_HTTP` must be set or the bot will fail to start.
 
 ### 1. Configure Environment Variables
 
 Edit your `.env` file:
 
 ```bash
-# Force bot to use only environment RPC (no fallback to config files)
-USE_ENV_RPC_ONLY=true
-
-# Your Alchemy or custom RPC endpoint
+# Your Alchemy or custom RPC endpoint (REQUIRED)
 ZKSYNC_RPC_HTTP=https://zksync-mainnet.g.alchemy.com/v2/YOUR_API_KEY
 ZKSYNC_RPC_WS=wss://zksync-mainnet.g.alchemy.com/v2/YOUR_API_KEY
 
 # Enable debug logging to see all RPC requests
 LOG_LEVEL=debug
 ```
+
+**Important**: 
+- `ZKSYNC_RPC_HTTP` is **required** and must be set in your environment
+- `ZKSYNC_RPC_WS` is optional (WebSocket endpoint)
+- No fallback to config files exists - if `ZKSYNC_RPC_HTTP` is not set, the bot will throw a clear error
+- All CLI commands (monitor, execute, etc.) use environment RPC exclusively
 
 ### 2. Run Diagnostic Commands
 
@@ -73,6 +76,15 @@ npm run cli -- diag health
 
 # Test quotes from all DEXes for configured pairs
 npm run cli -- diag quotes
+
+# Test with custom amount (in wei)
+npm run cli -- diag quotes --amount 1000000000000000000
+
+# Filter quotes by specific DEX
+npm run cli -- diag quotes --dex pancakeswap_v3
+
+# Override RPC for testing (diag commands only)
+npm run cli -- diag health --rpc https://custom-rpc.example.com
 
 # Display current configuration
 npm run cli -- diag config
@@ -106,20 +118,17 @@ Then visit http://localhost:3000/metrics to see:
 - Requests by endpoint
 - Success/failure rates
 
-### 5. Override RPC at Runtime
+### 5. RPC Override (Testing Only)
 
-You can override the RPC endpoint for any command without editing files:
+The `--rpc` flag is only available for diagnostic commands and is intended for testing different endpoints:
 
 ```bash
-# Use custom RPC for monitoring
-npm run cli -- monitor --rpc https://your-custom-rpc.com
-
-# Use custom RPC for diagnostics
+# Test with custom RPC (diag commands only)
 npm run cli -- diag health --rpc https://your-custom-rpc.com
-
-# Use custom RPC for quote testing
 npm run cli -- diag quotes --rpc https://your-custom-rpc.com
 ```
+
+**Note**: `monitor` and `execute` commands always use environment RPC (`ZKSYNC_RPC_HTTP`) and do not support `--rpc` override.
 
 ### Troubleshooting
 
@@ -127,16 +136,18 @@ If you don't see requests in your dashboard:
 
 1. **Check logs**: With `LOG_LEVEL=debug`, you should see messages like:
    ```
-   "Using RPC from environment (USE_ENV_RPC_ONLY=true)"
+   "Using RPC from environment variables"
    "Creating instrumented provider - all RPC requests will be tracked"
    "RPC request" with method and endpoint details
    ```
 
-2. **Verify configuration**: Run `npm run cli -- diag config` to see which endpoints are configured
+2. **Verify environment**: Ensure `ZKSYNC_RPC_HTTP` is set correctly in your `.env` file
 
 3. **Test connectivity**: Run `npm run cli -- diag health` to ensure basic RPC calls succeed
 
 4. **Check metrics**: If requests are being made but not showing in dashboard, verify the endpoint URL matches exactly
+
+5. **Missing ZKSYNC_RPC_HTTP**: If you see an error like "ZKSYNC_RPC_HTTP must be set in environment variables", add it to your `.env` file
 
 ## Configuration
 
@@ -145,7 +156,7 @@ The bot uses two main configuration files:
 - **config/dexes.json** - DEX addresses, token addresses, and flashloan provider settings for zkSync Era mainnet
 - **config/strategy.json** - Arbitrage strategy parameters including minimum profit thresholds, gas limits, and safety settings
 
-Environment variables in `.env` take precedence over config files when `USE_ENV_RPC_ONLY=true`.
+**RPC Configuration**: The bot exclusively uses RPC endpoints from environment variables (`.env` file). `ZKSYNC_RPC_HTTP` is required for all operations.
 
 See [Perplexity AI message.txt](./Perplexity%20AI%20message.txt) for the full implementation proposal and specifications.
 
@@ -198,9 +209,9 @@ Displays current bot configuration including enabled DEXes, RPC endpoints, and t
 - Upgradable contracts (UUPS), roles (admin, pauser, executor, strategist, withdrawer)
 - **SyncSwap Vault** flashloan integration with multi-token support (0% fee)
 - **DEX Integration**: 
-  - Mute.io swap support
+  - Mute.io with automatic stable-pair detection (USDC/USDT uses stable=true)
   - SyncSwap V1 price fetching via PoolMaster->getPool + Router->getAmountOut
-  - PancakeSwap V3 price quotes via Smart Router and swap execution via exactInputSingle
+  - PancakeSwap V3 reliable quotes via Quoter V2 contract (0x3d146FcE6c1006857750cBe8aF44f76a28041CCc)
 - Arbitrage executor with token/pool whitelists, slippage guard, SafeERC20
 - Flashloan router with `executeFlashloanMulti(tokens[], amounts[], data)` and `receiveFlashLoan` callback
 - **Live price fetching** from DEXes with graceful error handling

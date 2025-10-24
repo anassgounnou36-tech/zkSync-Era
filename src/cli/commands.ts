@@ -23,12 +23,11 @@ program
   .description("Run continuous price gap monitoring")
   .option("-d, --duration <hours>", "Duration in hours", "48")
   .option("--db <path>", "Database path", "./data/monitoring.sqlite")
-  .option("--rpc <url>", "Override RPC endpoint")
   .action(async (options) => {
     logger.info({ options }, "Starting monitor command");
 
     const duration = parseInt(options.duration);
-    const monitor = new PriceGapMonitor(options.db, options.rpc);
+    const monitor = new PriceGapMonitor(options.db);
 
     // Handle graceful shutdown
     process.on("SIGINT", () => {
@@ -115,7 +114,6 @@ program
   .description("Generate monitoring report from database")
   .option("--db <path>", "Database path", "./data/monitoring.sqlite")
   .option("-o, --output <path>", "Output JSON file path", "./monitoring-report.json")
-  .option("--rpc <url>", "Override RPC endpoint (not used for report generation)")
   .action((options) => {
     logger.info({ options }, "Generating monitoring report");
 
@@ -175,7 +173,7 @@ const diagCommand = program
 diagCommand
   .command("health")
   .description("Test RPC connectivity and display metrics")
-  .option("--rpc <url>", "Override RPC endpoint")
+  .option("--rpc <url>", "Override RPC endpoint (for testing only)")
   .action(async (options) => {
     try {
       await diagHealth(options.rpc);
@@ -189,10 +187,12 @@ diagCommand
 diagCommand
   .command("quotes")
   .description("Fetch quotes from all enabled DEXes for configured pairs")
-  .option("--rpc <url>", "Override RPC endpoint")
+  .option("--rpc <url>", "Override RPC endpoint (for testing only)")
+  .option("--amount <amount>", "Override amount to quote (in wei)")
+  .option("--dex <name>", "Filter by specific DEX name")
   .action(async (options) => {
     try {
-      await diagQuotes(options.rpc);
+      await diagQuotes(options.rpc, options.amount, options.dex);
       process.exit(0);
     } catch (error) {
       logger.error({ error }, "Quote test failed");

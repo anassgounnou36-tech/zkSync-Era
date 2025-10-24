@@ -67,10 +67,42 @@ export async function diagHealth(rpcOverride?: string): Promise<void> {
 }
 
 /**
+ * Format token amount to human-readable string using decimals
+ */
+function formatTokenAmount(amount: bigint, decimals: number, symbol: string): string {
+  const divisor = BigInt(10 ** decimals);
+  const wholePart = amount / divisor;
+  const fractionalPart = amount % divisor;
+  const fractionalStr = fractionalPart.toString().padStart(decimals, '0');
+  
+  // Show up to 6 decimal places for readability
+  const displayDecimals = Math.min(6, decimals);
+  const truncatedFractional = fractionalStr.slice(0, displayDecimals);
+  
+  return `${wholePart}.${truncatedFractional} ${symbol}`;
+}
+
+/**
+ * Calculate and format spread percentage between two prices
+ */
+function formatSpread(price1: number, price2: number): string {
+  if (price1 === 0 || price2 === 0) return "N/A";
+  
+  const spread = Math.abs(price1 - price2);
+  const spreadPercent = (spread / Math.min(price1, price2)) * 100;
+  
+  return `${spreadPercent.toFixed(4)}%`;
+}
+
+/**
  * Diagnostic command: test quotes from all DEXes
  * Fetches quotes for configured pairs and displays results
  */
-export async function diagQuotes(rpcOverride?: string): Promise<void> {
+export async function diagQuotes(
+  rpcOverride?: string, 
+  amountOverride?: string,
+  dexFilter?: string
+): Promise<void> {
   logger.info("=== DEX Quote Diagnostics ===");
 
   // Show selected RPC endpoint
@@ -85,6 +117,9 @@ export async function diagQuotes(rpcOverride?: string): Promise<void> {
   const tokenPairs = config.targetPairs;
 
   logger.info(`Testing ${tokenPairs.length} token pairs across all enabled DEXes`);
+  if (dexFilter) {
+    logger.info(`Filtering for DEX: ${dexFilter}`);
+  }
   logger.info("=====================================");
 
   for (const pair of tokenPairs) {
@@ -101,25 +136,55 @@ export async function diagQuotes(rpcOverride?: string): Promise<void> {
     const tokenA = tokenAInfo.address;
     const tokenB = tokenBInfo.address;
 
-    // Use flashloan size from config
-    const flashloanSizes = config.flashloanSize as Record<string, string>;
-    const amountIn = BigInt(flashloanSizes[pair.tokenA] || "1000000000000000000");
+    // Use amount override or flashloan size from config
+    let amountIn: bigint;
+    if (amountOverride) {
+      amountIn = BigInt(amountOverride);
+    } else {
+      const flashloanSizes = config.flashloanSize as Record<string, string>;
+      amountIn = BigInt(flashloanSizes[pair.tokenA] || "1000000000000000000");
+    }
 
-    logger.info(`  Amount In: ${amountIn.toString()} (${pair.tokenA})`);
+    const formattedAmountIn = formatTokenAmount(amountIn, tokenAInfo.decimals, pair.tokenA);
+    logger.info(`  Amount In: ${formattedAmountIn}`);
     logger.info(`  Token A: ${tokenA}`);
     logger.info(`  Token B: ${tokenB}`);
 
     // Fetch prices from all DEXes
     const prices = await fetcher.fetchAllPrices(tokenA, tokenB, amountIn);
 
+    // Filter by DEX if specified
+    const filteredPrices = dexFilter 
+      ? prices.filter(p => p.dex.toLowerCase() === dexFilter.toLowerCase())
+      : prices;
+
     logger.info(`  DEX Quotes (${pair.tokenA} → ${pair.tokenB}):`);
-    for (const price of prices) {
+    for (const price of filteredPrices) {
       if (price.success) {
+        const formattedAmountOut = formatTokenAmount(
+          price.amountOut, 
+          tokenBInfo.decimals, 
+          pair.tokenB
+        );
         logger.info(
-          `    ✓ ${price.dex}: ${price.amountOut.toString()} ${pair.tokenB} (rate: ${price.price.toFixed(6)})`
+          `    ✓ ${price.dex.padEnd(15)}: ${formattedAmountOut.padEnd(25)} (rate: ${price.price.toFixed(6)})`
         );
       } else {
-        logger.info(`    ✗ ${price.dex}: ${price.error}`);
+        logger.info(`    ✗ ${price.dex.padEnd(15)}: ${price.error}`);
+      }
+    }
+
+    // Calculate and show spreads between successful quotes
+    const successfulPrices = filteredPrices.filter(p => p.success);
+    if (successfulPrices.length >= 2) {
+      logger.info(`  Price Spreads:`);
+      for (let i = 0; i < successfulPrices.length; i++) {
+        for (let j = i + 1; j < successfulPrices.length; j++) {
+          const spread = formatSpread(successfulPrices[i].price, successfulPrices[j].price);
+          logger.info(
+            `    ${successfulPrices[i].dex} vs ${successfulPrices[j].dex}: ${spread}`
+          );
+        }
       }
     }
   }
