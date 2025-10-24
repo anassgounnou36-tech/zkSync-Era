@@ -1,4 +1,4 @@
-import { JsonRpcProvider, Contract, solidityPacked } from "ethers";
+import { JsonRpcProvider, Contract } from "ethers";
 import { logger } from "../config/logger.js";
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 
