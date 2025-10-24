@@ -23,6 +23,7 @@ program
   .description("Run continuous price gap monitoring")
   .option("-d, --duration <hours>", "Duration in hours (supports decimals, e.g., 0.2 for 12 minutes)", "48")
   .option("--db <path>", "Database path", "./data/monitoring.sqlite")
+  .option("--recognize-all", "Record all recognized opportunities even if below minProfitUSD", false)
   .action(async (options) => {
     logger.info({ options }, "Starting monitor command");
 
@@ -34,7 +35,7 @@ program
       process.exit(1);
     }
 
-    const monitor = new PriceGapMonitor(options.db);
+    const monitor = new PriceGapMonitor(options.db, undefined, options.recognizeAll);
 
     // Handle graceful shutdown
     process.on("SIGINT", () => {

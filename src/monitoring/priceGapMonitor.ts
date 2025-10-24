@@ -50,9 +50,11 @@ export class PriceGapMonitor {
   private isRunning: boolean = false;
   private startTime: number = 0;
   private dbPath: string;
+  private recognizeAll: boolean;
 
-  constructor(dbPath: string = "./data/monitoring.sqlite", rpcOverride?: string) {
+  constructor(dbPath: string = "./data/monitoring.sqlite", rpcOverride?: string, recognizeAll: boolean = false) {
     this.dbPath = dbPath;
+    this.recognizeAll = recognizeAll;
     
     // Ensure directory exists
     const dir = path.dirname(dbPath);
@@ -68,7 +70,7 @@ export class PriceGapMonitor {
     
     this.calculator = new ProfitCalculator();
     this.initDatabase();
-    logger.info({ dbPath }, "Price gap monitor initialized");
+    logger.info({ dbPath, recognizeAll }, "Price gap monitor initialized");
   }
 
   /**

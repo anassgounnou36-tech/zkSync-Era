@@ -226,6 +226,127 @@ npm run cli -- info
 
 Displays current bot configuration including enabled DEXes, RPC endpoints, and thresholds.
 
+### Scan Once - Opportunity Recognition
+
+```bash
+# Scan all configured pairs once and display opportunities
+npm run cli -- scan-once
+
+# Filter by specific pairs
+npm run cli -- scan-once --pairs WETH/USDC,USDC/USDT
+
+# Set minimum spread threshold (in basis points)
+npm run cli -- scan-once --min-spread-bps 10
+
+# Override flashloan amount
+npm run cli -- scan-once --amount 1000000000000000000
+
+# Use custom RPC (testing only)
+npm run cli -- scan-once --rpc https://custom-rpc.example.com
+```
+
+Scans all configured pairs once and prints a sorted table of recognized opportunities sorted by spread. Shows:
+- Token pair and size
+- Best path for each leg (DEX used)
+- Zero-slippage spread (gross profit potential)
+- Slippage-adjusted spread (realistic profit after slippage)
+- Estimated net profit (after gas costs)
+- Executability flag (meets minProfitUSD threshold)
+
+## Recognition vs Executable
+
+The bot distinguishes between **recognized** opportunities and **executable** opportunities:
+
+### Recognized Opportunities
+An opportunity is **recognized** when:
+- Gross spread (zero-slippage round-trip) is positive (`grossSpreadBps > 0`)
+- This indicates theoretical arbitrage exists across DEXes
+
+All recognized opportunities are logged and stored in the database with `recognized=1`, regardless of profitability.
+
+### Executable Opportunities
+An opportunity is **executable** when it meets additional criteria:
+- Recognized spread is positive AND
+- Slippage-adjusted net profit ≥ `minProfitUSD` (configured in `strategy.json`)
+- Slippage-adjusted spread remains positive after applying `maxSlippage`
+
+The `monitor` command with `--recognize-all` flag will record all recognized opportunities in the database, even when `executable=false`. This provides visibility into market conditions and spread patterns.
+
+**Key insight**: Recognition is about market observation; execution is about profitable action.
+
+## USD Conversion
+
+The bot uses deterministic USD conversion for profit calculations:
+
+### Anchor: USDC = $1.00
+- USDC is treated as $1.00 (6 decimals)
+- All other token values are derived from USDC
+
+### Small-Size Reference Quotes
+For non-USDC tokens, the bot:
+1. Fetches a small reference quote (e.g., 0.1 WETH → USDC or 100 USDT → USDC)
+2. Prefers PancakeSwap V3 Quoter for accuracy
+3. Falls back to Mute if PancakeSwap unavailable
+4. Caches the result for 5 seconds (TTL)
+5. Calculates price per 1 token unit
+
+### Deterministic Math
+- All internal calculations use `BigInt` (no floating-point)
+- USD values are stored as integers with 6 decimals (USDC precision)
+- Display formatting only converts to decimal strings at presentation
+- Rounding down for `amountOutMinimum` ensures safety
+
+Example:
+```
+Token: WETH (18 decimals)
+Reference quote: 0.1 WETH → 200 USDC
+Price: 200 / 0.1 = 2000 USDC per 1 WETH
+Amount: 2 WETH = 2 * 2000 = $4000 USD
+```
+
+## Mainnet Checklist
+
+Before running the bot on mainnet with real funds:
+
+### Environment Setup
+- [ ] Set `ZKSYNC_RPC_HTTP` to a reliable provider (Alchemy, Infura, or self-hosted)
+- [ ] Enable `LOG_LEVEL=info` or `LOG_LEVEL=debug` for visibility
+- [ ] Ensure RPC provider has sufficient rate limits for continuous operation
+
+### Configuration
+- [ ] Review `strategy.json`:
+  - Set appropriate `minProfitUSD` (recommended: ≥$3)
+  - Configure `maxSlippage` (recommended: 0.5% = 0.005)
+  - Set `flashloanSize` for each token (start small)
+- [ ] Review `dexes.json`:
+  - Enable only trusted, audited DEXes
+  - Verify contract addresses on zkSync Era block explorer
+  - Velocore disabled by default (safety)
+
+### Testing Phase
+1. **Dry-run mode**: `npm run cli -- execute --dry-run` for 24-48 hours
+2. **Monitor-only**: `npm run cli -- monitor --duration 24 --recognize-all`
+3. **Scan-once**: `npm run cli -- scan-once` to verify opportunity detection
+4. **Diagnostics**: `npm run cli -- diag quotes` to verify DEX connectivity
+
+### Monitoring
+- [ ] Set up alerts (Telegram bot or external monitoring)
+- [ ] Monitor gas prices and set `maxGasPrice` appropriately
+- [ ] Track RPC usage in provider dashboard
+- [ ] Review `monitoring.sqlite` database for opportunity patterns
+
+### Live Execution
+- [ ] Start with small `flashloanSize` (test with $100-$500)
+- [ ] Use `--interval 60` or higher for conservative execution
+- [ ] Monitor first 10-20 executions closely
+- [ ] Gradually increase position sizes after proven profitability
+
+### Emergency Procedures
+- [ ] Know how to pause the bot (`SIGINT` or `SIGTERM`)
+- [ ] Have emergency withdrawal plan
+- [ ] Monitor wallet balances and token approvals
+- [ ] Set `dailyGasBudget` to limit losses
+
 ## Highlights
 
 - Upgradable contracts (UUPS), roles (admin, pauser, executor, strategist, withdrawer)

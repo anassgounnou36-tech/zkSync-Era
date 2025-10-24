@@ -53,7 +53,7 @@ export function formatAmount(amount: bigint, decimals: number, maxDecimals: numb
   const wholePart = amount / divisor;
   const fractionalPart = amount % divisor;
   
-  if (fractionalPart === 0n) {
+  if (fractionalPart === 0n && maxDecimals === 0) {
     return wholePart.toString();
   }
   
@@ -61,7 +61,10 @@ export function formatAmount(amount: bigint, decimals: number, maxDecimals: numb
   const displayDecimals = Math.min(maxDecimals, decimals);
   const truncatedFractional = fractionalStr.slice(0, displayDecimals);
   
-  return `${wholePart}.${truncatedFractional}`;
+  // Pad to maxDecimals if needed
+  const paddedFractional = truncatedFractional.padEnd(displayDecimals, '0');
+  
+  return `${wholePart}.${paddedFractional}`;
 }
 
 /**

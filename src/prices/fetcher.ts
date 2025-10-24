@@ -2,6 +2,7 @@ import { JsonRpcProvider, Contract } from "ethers";
 import { logger } from "../config/logger.js";
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 import { getSyncSwapQuote } from "./adapters/syncswap.js";
+import { getVelocoreQuote } from "./adapters/velocore.js";
 
 const MUTE_ROUTER_ABI = [
   "function getAmountsOut(uint256 amountIn, address[] calldata path, bool[] calldata stable) external view returns (uint256[] memory amounts)",
@@ -513,7 +514,119 @@ export class PriceFetcher {
       prices.push(pancakePrice);
     }
 
+    // Velocore (read-only, disabled by default)
+    if (this.config.dexes.velocore?.enabled) {
+      const velocorePrice = await this.fetchVelocorePrice(
+        tokenIn,
+        tokenOut,
+        amountIn
+      );
+      prices.push(velocorePrice);
+    }
+
     return prices;
+  }
+
+  /**
+   * Fetch price from Velocore (read-only, disabled by default)
+   * This method must not throw; skip on error
+   */
+  async fetchVelocorePrice(
+    tokenIn: string,
+    tokenOut: string,
+    amountIn: bigint
+  ): Promise<DexPrice> {
+    logger.debug(
+      { dex: "velocore", tokenIn, tokenOut, amountIn: amountIn.toString() },
+      "Fetching price quote"
+    );
+
+    try {
+      // Velocore requires a pool address - if not configured, skip
+      const poolAddress = this.config.dexes.velocore?.pool;
+      if (!poolAddress || poolAddress === "0x0000000000000000000000000000000000000000") {
+        logger.debug(
+          { dex: "velocore" },
+          "Pool address not configured, skipping"
+        );
+        return {
+          dex: "velocore",
+          tokenIn,
+          tokenOut,
+          amountIn,
+          amountOut: 0n,
+          price: 0,
+          success: false,
+          error: "Pool address not configured",
+        };
+      }
+
+      const result = await getVelocoreQuote(
+        this.provider,
+        poolAddress,
+        tokenIn,
+        tokenOut,
+        amountIn,
+        { verbose: this.verbose }
+      );
+
+      if (result.success) {
+        logger.debug(
+          {
+            dex: "velocore",
+            tokenIn,
+            tokenOut,
+            amountIn: amountIn.toString(),
+            amountOut: result.amountOut.toString(),
+          },
+          "Price quote successful"
+        );
+
+        return {
+          dex: "velocore",
+          tokenIn,
+          tokenOut,
+          amountIn,
+          amountOut: result.amountOut,
+          price: Number(result.amountOut) / Number(amountIn),
+          success: true,
+        };
+      } else {
+        logger.debug(
+          { dex: "velocore", error: result.error },
+          "Price quote failed"
+        );
+
+        return {
+          dex: "velocore",
+          tokenIn,
+          tokenOut,
+          amountIn,
+          amountOut: 0n,
+          price: 0,
+          success: false,
+          error: result.error,
+        };
+      }
+    } catch (error) {
+      // Must not throw - catch all errors and return failed result
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.debug(
+        { dex: "velocore", error: errorMessage },
+        "Price quote failed with exception (caught safely)"
+      );
+
+      return {
+        dex: "velocore",
+        tokenIn,
+        tokenOut,
+        amountIn,
+        amountOut: 0n,
+        price: 0,
+        success: false,
+        error: errorMessage,
+      };
+    }
   }
 
   /**
