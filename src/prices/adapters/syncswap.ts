@@ -1,4 +1,4 @@
-import { JsonRpcProvider, Contract, Interface } from "ethers";
+import { JsonRpcProvider, Contract } from "ethers";
 import { logger } from "../../config/logger.js";
 
 // Factory ABIs for pool discovery
