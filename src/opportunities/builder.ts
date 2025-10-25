@@ -248,38 +248,37 @@ export class OpportunityBuilder {
     );
     
     for (const pair of pairs) {
-      // Determine size for base token (tokenA), with fallback to tokenB
+      // Determine size for base token (tokenA) - no tokenB fallback
       let size = sizes[pair.tokenA.toLowerCase()];
       let sizeSource = "tokenA";
       
       if (!size) {
-        size = sizes[pair.tokenB.toLowerCase()];
-        sizeSource = "tokenB (fallback)";
-      }
-      
-      if (!size) {
-        // Try getting from configured defaults
+        // Try getting from configured defaults (no tokenB fallback)
         const tokenASymbol = this.getTokenSymbol(pair.tokenA);
-        const tokenBSymbol = this.getTokenSymbol(pair.tokenB);
         
         if (tokenASymbol && strategyConfig.arbitrage.flashloanSize[tokenASymbol as keyof typeof strategyConfig.arbitrage.flashloanSize]) {
           size = BigInt(strategyConfig.arbitrage.flashloanSize[tokenASymbol as keyof typeof strategyConfig.arbitrage.flashloanSize] as string);
           sizeSource = "config default for tokenA";
-        } else if (tokenBSymbol && strategyConfig.arbitrage.flashloanSize[tokenBSymbol as keyof typeof strategyConfig.arbitrage.flashloanSize]) {
-          size = BigInt(strategyConfig.arbitrage.flashloanSize[tokenBSymbol as keyof typeof strategyConfig.arbitrage.flashloanSize] as string);
-          sizeSource = "config default for tokenB";
         }
       }
       
       if (!size) {
-        logger.warn({ pair }, "No size configured for pair, skipping");
+        const tokenASymbol = this.getTokenSymbol(pair.tokenA);
+        const tokenBSymbol = this.getTokenSymbol(pair.tokenB);
+        logger.warn(
+          { 
+            pair: `${tokenASymbol}/${tokenBSymbol}`,
+            tokenA: pair.tokenA,
+          }, 
+          "No size configured for tokenA of this pair, skipping"
+        );
         continue;
       }
       
       const tokenASymbol = this.getTokenSymbol(pair.tokenA);
       const tokenBSymbol = this.getTokenSymbol(pair.tokenB);
       
-      if (sizeSource.includes("fallback") || sizeSource.includes("config default")) {
+      if (sizeSource.includes("config default")) {
         logger.warn(
           { 
             pair: `${tokenASymbol}/${tokenBSymbol}`, 

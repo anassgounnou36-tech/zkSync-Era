@@ -60,13 +60,14 @@ export class PriceFetcher {
   }
 
   /**
-   * Detect if a pair is a stable pair (e.g., USDC/USDT)
+   * Detect if a pair is a stable pair (e.g., USDC/USDT, USDC/USDC.e)
    */
   private isStablePair(tokenIn: string, tokenOut: string): boolean {
     const stablecoins = [
       this.config.tokens.USDC.address.toLowerCase(),
+      (this.config.tokens as any)["USDC.e"]?.address?.toLowerCase(),
       this.config.tokens.USDT.address.toLowerCase(),
-    ];
+    ].filter(Boolean); // Filter out any undefined addresses
 
     const tokenInLower = tokenIn.toLowerCase();
     const tokenOutLower = tokenOut.toLowerCase();
@@ -388,11 +389,12 @@ export class PriceFetcher {
       pathPromises.push(tryPathWithTimeout(pathFn, `direct (fee: ${fee})`, [fee]));
     }
 
-    // 2. Try multi-hop via USDC and USDT
+    // 2. Try multi-hop via USDC (native first, then USDC.e), and USDT
     const intermediateTokens = [
-      { address: this.config.tokens.USDC.address, symbol: "USDC" },
+      { address: this.config.tokens.USDC.address, symbol: "USDC" }, // Native USDC (primary)
+      { address: (this.config.tokens as any)["USDC.e"]?.address, symbol: "USDC.e" }, // Bridged USDC (secondary)
       { address: this.config.tokens.USDT.address, symbol: "USDT" },
-    ];
+    ].filter(t => t.address); // Filter out any undefined addresses
 
     for (const intermediate of intermediateTokens) {
       const intermediateLower = intermediate.address.toLowerCase();

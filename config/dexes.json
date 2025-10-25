@@ -54,15 +54,21 @@
         "enabled": false
       }
     },
-    "stableSymbols": ["USDC", "USDT"],
+    "stableSymbols": ["USDC", "USDC.e", "USDT"],
     "tokens": {
       "WETH": {
         "address": "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91",
         "decimals": 18
       },
       "USDC": {
+        "address": "0x1d17CBcF0D6D143135aE902365D2E5e2A16538D4",
+        "decimals": 6,
+        "comment": "Native USDC (primary)"
+      },
+      "USDC.e": {
         "address": "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4",
-        "decimals": 6
+        "decimals": 6,
+        "comment": "Bridged USDC (secondary)"
       },
       "USDT": {
         "address": "0x493257fD37EDB34451f62EDf8D2a0C418852bA4C",

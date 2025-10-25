@@ -10,6 +10,11 @@ const STABLE_FACTORY_ABI = [
   "function getPool(address tokenA, address tokenB) external view returns (address pool)",
 ];
 
+// Router V2 ABI for getAmountsOut
+const ROUTER_V2_ABI = [
+  "function getAmountsOut(uint256 amountIn, address[] calldata path, address[] calldata pools) external view returns (uint256[] memory amounts)",
+];
+
 // Multiple quote ABIs to probe
 const QUOTE_ABI_A = [
   "function getAmountOut(uint256 amountIn, address tokenIn) external view returns (uint256)",
@@ -58,6 +63,10 @@ const MAX_CONSECUTIVE_ERRORS = 5;
 // Factory addresses
 const CLASSIC_FACTORY = "0xf2DAd89f2788a8CD54625C60b55cD3d2D0ACa7Cb";
 const STABLE_FACTORY = "0x5b9f21d407F35b10CbfDDca17D5D84b129356ea3";
+
+// Router addresses
+const ROUTER_V2 = "0x9B5def958d0f3b6955cBEa4D5B7809b2fb26b059";
+const ROUTER_V1 = "0x2da10A1e27bF85cEdD8FFb1AbBe97e53391C0295"; // Fallback
 
 // Stable symbols for preferring stable pools (imported from config)
 import dexesConfig from "../../../config/dexes.json" assert { type: "json" };
@@ -242,6 +251,51 @@ async function probeQuoteABIs(
   }
 
   return { success: false, amountOut: 0n };
+}
+
+/**
+ * Try Router V2 getAmountsOut (for stable pools)
+ */
+async function tryRouterV2GetAmountsOut(
+  provider: JsonRpcProvider,
+  tokenIn: string,
+  tokenOut: string,
+  poolAddress: string,
+  amountIn: bigint,
+  verbose: boolean
+): Promise<{ success: boolean; amountOut: bigint; method?: string }> {
+  try {
+    const router = new Contract(ROUTER_V2, ROUTER_V2_ABI, provider);
+    const path = [tokenIn, tokenOut];
+    const pools = [poolAddress];
+    
+    if (verbose) {
+      logger.debug(
+        { router: ROUTER_V2, path, pools, amountIn: amountIn.toString() },
+        "Trying Router V2 getAmountsOut"
+      );
+    }
+    
+    const amounts = await router.getAmountsOut(amountIn, path, pools);
+    const amountOut = BigInt(amounts[1].toString());
+    
+    if (verbose) {
+      logger.debug(
+        { router: ROUTER_V2, amountOut: amountOut.toString() },
+        "Router V2 getAmountsOut successful"
+      );
+    }
+    
+    return { success: true, amountOut, method: "router-v2" };
+  } catch (error) {
+    if (verbose) {
+      logger.debug(
+        { router: ROUTER_V2, error: error instanceof Error ? error.message : "Unknown" },
+        "Router V2 getAmountsOut failed"
+      );
+    }
+    return { success: false, amountOut: 0n };
+  }
 }
 
 /**
@@ -512,12 +566,46 @@ export async function getSyncSwapQuote(
       }
     }
   } else {
-    // Stable pool - skip off-chain calculation
+    // Stable pool - try Router V2 getAmountsOut
     if (verbose) {
       logger.debug(
         { poolAddress: selectedPool, poolType },
-        "Skipping off-chain calculation for Stable pool (requires stable invariant math)"
+        "Attempting Router V2 getAmountsOut for Stable pool"
       );
+    }
+    
+    const routerV2Result = await tryRouterV2GetAmountsOut(
+      provider,
+      tokenIn,
+      tokenOut,
+      selectedPool,
+      amountIn,
+      verbose
+    );
+    
+    if (routerV2Result.success) {
+      if (verbose) {
+        logger.debug(
+          { poolAddress: selectedPool, amountOut: routerV2Result.amountOut.toString(), method: "router-v2" },
+          "Router V2 getAmountsOut successful"
+        );
+      }
+      
+      recordSuccess(tokenIn, tokenOut);
+      return {
+        success: true,
+        amountOut: routerV2Result.amountOut,
+        poolAddress: selectedPool,
+        poolType,
+        method: "router-v2",
+      };
+    } else {
+      if (verbose) {
+        logger.debug(
+          { poolAddress: selectedPool, poolType },
+          "Router V2 getAmountsOut failed - skipping stable pool cleanly"
+        );
+      }
     }
   }
 
