@@ -66,7 +66,6 @@ const STABLE_FACTORY = "0x5b9f21d407F35b10CbfDDca17D5D84b129356ea3";
 
 // Router addresses
 const ROUTER_V2 = "0x9B5def958d0f3b6955cBEa4D5B7809b2fb26b059";
-const ROUTER_V1 = "0x2da10A1e27bF85cEdD8FFb1AbBe97e53391C0295"; // Fallback
 
 // Stable symbols for preferring stable pools (imported from config)
 import dexesConfig from "../../../config/dexes.json" assert { type: "json" };

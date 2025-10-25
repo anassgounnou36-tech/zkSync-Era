@@ -74,6 +74,7 @@ export class PriceFetcher {
   private isStablePair(tokenIn: string, tokenOut: string): boolean {
     const stablecoins = [
       this.config.tokens.USDC.address.toLowerCase(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (this.config.tokens as any)["USDC.e"]?.address?.toLowerCase(),
       this.config.tokens.USDT.address.toLowerCase(),
     ].filter(Boolean); // Filter out any undefined addresses
@@ -117,6 +118,7 @@ export class PriceFetcher {
     tokenOut: string,
     amountIn: bigint
   ): Promise<DexPrice> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dexConfig = this.config.dexes.mute as any;
     const policy: AliasingPolicy = dexConfig.tokenAliasing || "off";
 
@@ -161,7 +163,7 @@ export class PriceFetcher {
     tokenIn: string,
     tokenOut: string,
     amountIn: bigint,
-    policy: AliasingPolicy
+    _policy: AliasingPolicy
   ): Promise<DexPrice> {
     const isStable = this.isStablePair(tokenIn, tokenOut);
 
@@ -448,6 +450,7 @@ export class PriceFetcher {
     // 2. Try multi-hop via USDC (native first, then USDC.e), and USDT
     const intermediateTokens = [
       { address: this.config.tokens.USDC.address, symbol: "USDC" }, // Native USDC (primary)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { address: (this.config.tokens as any)["USDC.e"]?.address, symbol: "USDC.e" }, // Bridged USDC (secondary)
       { address: this.config.tokens.USDT.address, symbol: "USDT" },
     ].filter(t => t.address); // Filter out any undefined addresses

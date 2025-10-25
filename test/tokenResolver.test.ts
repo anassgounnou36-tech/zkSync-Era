@@ -7,6 +7,7 @@ describe("DEXTokenResolver", () => {
   const config = dexesConfig.zkSyncEra;
 
   const USDC_NATIVE = config.tokens.USDC.address;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const USDC_BRIDGED = (config.tokens as any)["USDC.e"].address;
   const WETH = config.tokens.WETH.address;
   const USDT = config.tokens.USDT.address;

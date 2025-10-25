@@ -10,7 +10,6 @@
  * - off: No aliasing, use addresses as-is
  */
 
-import { logger } from "../config/logger.js";
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 
 export type AliasingPolicy = "auto" | "force-native" | "force-bridged" | "off";
@@ -38,6 +37,7 @@ export class DEXTokenResolver {
 
   constructor() {
     this.usdcNative = dexesConfig.zkSyncEra.tokens.USDC.address.toLowerCase();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.usdcBridged = (dexesConfig.zkSyncEra.tokens as any)["USDC.e"].address.toLowerCase();
   }
 
