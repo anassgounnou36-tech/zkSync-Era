@@ -3,7 +3,7 @@ import { createProvider } from "../providers/factory.js";
 import { PriceFetcher } from "../prices/fetcher.js";
 import { UsdConverter } from "../utils/usdConverter.js";
 import { OpportunityBuilder } from "../opportunities/builder.js";
-import { formatAmount } from "../utils/math.js";
+import { formatAmount, parseHumanAmount } from "../utils/math.js";
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 
 /**
@@ -14,6 +14,7 @@ export interface ScanOnceOptions {
   pairs?: string[];
   dexes?: string[];
   amount?: string;
+  amountHuman?: string;
   minSpreadBps?: number;
 }
 
@@ -59,7 +60,34 @@ export async function scanOnce(options: ScanOnceOptions = {}): Promise<void> {
 
   // Parse amount override
   let sizeOverride: Record<string, bigint> | undefined;
-  if (options.amount) {
+  let humanReadableSize: string | undefined;
+  
+  if (options.amountHuman && options.amount) {
+    throw new Error("Cannot specify both --amount and --amount-human. Use one or the other.");
+  }
+  
+  if (options.amountHuman) {
+    // Parse human-readable amount
+    const parsed = parseHumanAmount(options.amountHuman, (symbol: string) => {
+      const tokenInfo = fetcher.getTokenInfo(symbol);
+      if (!tokenInfo) return null;
+      return {
+        decimals: tokenInfo.decimals,
+        address: tokenInfo.address,
+      };
+    });
+    
+    if (!parsed) {
+      throw new Error(`Invalid --amount-human format: '${options.amountHuman}'. Expected format: '1 WETH' or '2000 USDC'`);
+    }
+    
+    sizeOverride = {
+      [parsed.address.toLowerCase()]: parsed.amount,
+    };
+    
+    humanReadableSize = `${formatAmount(parsed.amount, parsed.decimals, 6)} ${parsed.symbol}`;
+    logger.info(`Using human-readable amount: ${humanReadableSize} (${parsed.amount.toString()} wei)`);
+  } else if (options.amount) {
     const amount = BigInt(options.amount);
     sizeOverride = {
       [dexesConfig.zkSyncEra.tokens.WETH.address.toLowerCase()]: amount,
@@ -149,10 +177,33 @@ export async function scanOnce(options: ScanOnceOptions = {}): Promise<void> {
       
       logger.info(`\n${i + 1}. ${opp.tokenASymbol}/${opp.tokenBSymbol}:`);
       logger.info(`   Size: ${formatAmount(opp.amountIn, tokenAMeta!.decimals, 6)} ${opp.tokenASymbol}`);
-      logger.info(`   Path A (${opp.tokenASymbol} → ${opp.tokenBSymbol}): ${opp.quoteAtoB.dex}`);
+      
+      // Path A with metadata
+      let pathAInfo = `   Path A (${opp.tokenASymbol} → ${opp.tokenBSymbol}): ${opp.quoteAtoB.dex}`;
+      if (opp.quoteAtoB.metadata) {
+        const metaParts: string[] = [];
+        if (opp.quoteAtoB.metadata.poolType) metaParts.push(`type: ${opp.quoteAtoB.metadata.poolType}`);
+        if (opp.quoteAtoB.metadata.method) metaParts.push(`method: ${opp.quoteAtoB.metadata.method}`);
+        if (metaParts.length > 0) {
+          pathAInfo += ` [${metaParts.join(', ')}]`;
+        }
+      }
+      logger.info(pathAInfo);
       logger.info(`     Amount Out: ${formatAmount(opp.quoteAtoB.amountOut, tokenBMeta!.decimals, 6)} ${opp.tokenBSymbol}`);
-      logger.info(`   Path B (${opp.tokenBSymbol} → ${opp.tokenASymbol}): ${opp.quoteBtoA.dex}`);
+      
+      // Path B with metadata
+      let pathBInfo = `   Path B (${opp.tokenBSymbol} → ${opp.tokenASymbol}): ${opp.quoteBtoA.dex}`;
+      if (opp.quoteBtoA.metadata) {
+        const metaParts: string[] = [];
+        if (opp.quoteBtoA.metadata.poolType) metaParts.push(`type: ${opp.quoteBtoA.metadata.poolType}`);
+        if (opp.quoteBtoA.metadata.method) metaParts.push(`method: ${opp.quoteBtoA.metadata.method}`);
+        if (metaParts.length > 0) {
+          pathBInfo += ` [${metaParts.join(', ')}]`;
+        }
+      }
+      logger.info(pathBInfo);
       logger.info(`     Amount Out: ${formatAmount(opp.quoteBtoA.amountOut, tokenAMeta!.decimals, 6)} ${opp.tokenASymbol}`);
+      
       logger.info(`   Gross Spread: ${(Number(opp.grossSpreadBps) / 100).toFixed(4)}%`);
       logger.info(`   Slip-Adj Spread: ${(Number(opp.slipAdjSpreadBps) / 100).toFixed(4)}%`);
       logger.info(`   USD Value In: $${(Number(opp.usdValueIn) / 1e6).toFixed(2)}`);
