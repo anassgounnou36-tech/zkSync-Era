@@ -5,7 +5,9 @@
     "gasMultiplier": 1.2,
     "flashloanSize": {
       "WETH": "2000000000000000000",
-      "USDC": "2000000000"
+      "USDC": "2000000000",
+      "USDC.e": "2000000000",
+      "USDT": "2000000000"
     },
     "targetPairs": [
       {
@@ -14,10 +16,22 @@
       },
       {
         "tokenA": "WETH",
+        "tokenB": "USDC.e"
+      },
+      {
+        "tokenA": "WETH",
         "tokenB": "USDT"
       },
       {
         "tokenA": "USDC",
+        "tokenB": "USDC.e"
+      },
+      {
+        "tokenA": "USDC",
+        "tokenB": "USDT"
+      },
+      {
+        "tokenA": "USDC.e",
         "tokenB": "USDT"
       }
     ],
