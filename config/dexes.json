@@ -16,12 +16,14 @@
       "syncswap_v1": {
         "name": "SyncSwap V1",
         "router": "0x2da10A1e27bF85cEdD8FFb1AbBe97e53391C0295",
+        "routerV2": "0x9B5def958d0f3b6955cBEa4D5B7809b2fb26b059",
         "factory": "0xf2DAd89f2788a8CD54625C60b55cD3d2D0ACa7Cb",
         "classicFactory": "0xf2DAd89f2788a8CD54625C60b55cD3d2D0ACa7Cb",
         "stableFactory": "0x5b9f21d407F35b10CbfDDca17D5D84b129356ea3",
         "poolMaster": "0xbB05918E9B4bA9Fe2c8384d223f0844867909Ffb",
         "fee": 0.003,
-        "enabled": true
+        "enabled": true,
+        "tokenAliasing": "auto"
       },
       "syncswap_v2": {
         "name": "SyncSwap V2",
@@ -35,7 +37,8 @@
         "name": "Mute.io",
         "router": "0x8B791913eB07C32779a16750e3868aA8495F5964",
         "fee": 0.003,
-        "enabled": true
+        "enabled": true,
+        "tokenAliasing": "auto"
       },
       "pancakeswap_v3": {
         "name": "PancakeSwap V3",
@@ -44,7 +47,8 @@
         "factory": "0x1BB72E0CbbEA93c08f535fc7856E0338D7F7a8aB",
         "quoter": "0x3d146FcE6c1006857750cBe8aF44f76a28041CCc",
         "fee": 0.0025,
-        "enabled": true
+        "enabled": true,
+        "tokenAliasing": "auto"
       },
       "velocore": {
         "name": "Velocore",
@@ -55,6 +59,10 @@
       }
     },
     "stableSymbols": ["USDC", "USDC.e", "USDT"],
+    "tokenPriority": {
+      "USDC": ["USDC", "USDC.e"],
+      "comment": "Prefer native USDC first, fall back to USDC.e"
+    },
     "tokens": {
       "WETH": {
         "address": "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91",

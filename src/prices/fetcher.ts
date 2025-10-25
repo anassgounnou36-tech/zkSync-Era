@@ -3,6 +3,7 @@ import { logger } from "../config/logger.js";
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 import { getSyncSwapQuote } from "./adapters/syncswap.js";
 import { getVelocoreQuote } from "./adapters/velocore.js";
+import { DEXTokenResolver, AliasingPolicy } from "./tokenResolver.js";
 
 const MUTE_ROUTER_ABI = [
   "function getAmountsOut(uint256 amountIn, address[] calldata path, bool[] calldata stable) external view returns (uint256[] memory amounts)",
@@ -28,6 +29,12 @@ export interface DexPrice {
     method?: string;
     pathType?: string; // e.g., "direct", "multi-hop via USDC"
     feeTiers?: number[]; // Fee tiers used in the path
+    resolvedTokens?: {
+      tokenInResolved?: string;
+      tokenOutResolved?: string;
+      tokenInFrom?: "native" | "bridged" | "original";
+      tokenOutFrom?: "native" | "bridged" | "original";
+    };
   };
 }
 
@@ -46,6 +53,7 @@ export class PriceFetcher {
   private provider: JsonRpcProvider;
   private config: typeof dexesConfig.zkSyncEra;
   private verbose: boolean;
+  private tokenResolver: DEXTokenResolver;
 
   constructor(provider?: JsonRpcProvider, options: { verbose?: boolean } = {}) {
     // Accept a provider instance, or create a fallback (for backward compatibility)
@@ -57,6 +65,7 @@ export class PriceFetcher {
     }
     this.config = dexesConfig.zkSyncEra;
     this.verbose = options.verbose || false;
+    this.tokenResolver = new DEXTokenResolver();
   }
 
   /**
@@ -101,11 +110,58 @@ export class PriceFetcher {
   /**
    * Fetch price from Mute.io DEX
    * Automatically detects stable pairs (USDC/USDT) and uses stable=true for those
+   * Supports token aliasing: tries native USDC first, falls back to USDC.e
    */
   async fetchMutePrice(
     tokenIn: string,
     tokenOut: string,
     amountIn: bigint
+  ): Promise<DexPrice> {
+    const dexConfig = this.config.dexes.mute as any;
+    const policy: AliasingPolicy = dexConfig.tokenAliasing || "off";
+
+    // Try with native USDC first (if policy is auto)
+    const result = await this.fetchMutePriceInternal(tokenIn, tokenOut, amountIn, policy);
+    
+    // If failed and policy is auto, try with bridged fallback
+    if (!result.success && policy === "auto" && this.tokenResolver.pairInvolvesUSDC(tokenIn, tokenOut)) {
+      const altTokenIn = this.tokenResolver.getAlternative(tokenIn) || tokenIn;
+      const altTokenOut = this.tokenResolver.getAlternative(tokenOut) || tokenOut;
+      
+      // Only retry if at least one token was aliased
+      if (altTokenIn !== tokenIn || altTokenOut !== tokenOut) {
+        logger.debug(
+          { dex: "mute", originalTokenIn: tokenIn, originalTokenOut: tokenOut, altTokenIn, altTokenOut },
+          "Retrying Mute quote with USDC.e fallback"
+        );
+        
+        const altResult = await this.fetchMutePriceInternal(altTokenIn, altTokenOut, amountIn, "off");
+        
+        if (altResult.success) {
+          // Update metadata to show aliasing
+          if (!altResult.metadata) altResult.metadata = {};
+          altResult.metadata.resolvedTokens = {
+            tokenInResolved: altTokenIn,
+            tokenOutResolved: altTokenOut,
+            tokenInFrom: altTokenIn !== tokenIn ? "bridged" : "original",
+            tokenOutFrom: altTokenOut !== tokenOut ? "bridged" : "original",
+          };
+          return altResult;
+        }
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * Internal method to fetch Mute price without aliasing logic
+   */
+  private async fetchMutePriceInternal(
+    tokenIn: string,
+    tokenOut: string,
+    amountIn: bigint,
+    policy: AliasingPolicy
   ): Promise<DexPrice> {
     const isStable = this.isStablePair(tokenIn, tokenOut);
 
