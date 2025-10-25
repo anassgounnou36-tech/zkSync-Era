@@ -14,6 +14,7 @@ export interface ScanOnceOptions {
   pairs?: string[];
   dexes?: string[];
   amount?: string;
+  amountHuman?: string;
   minSpreadBps?: number;
 }
 
@@ -57,9 +58,36 @@ export async function scanOnce(options: ScanOnceOptions = {}): Promise<void> {
     logger.warn("DEX filtering not yet implemented, scanning all enabled DEXes");
   }
 
-  // Parse amount override
+  // Parse amount override with support for human-readable amounts
   let sizeOverride: Record<string, bigint> | undefined;
-  if (options.amount) {
+  
+  if (options.amountHuman) {
+    // Parse human-readable amount like "1 WETH" or "1000 USDC"
+    const match = options.amountHuman.match(/^(\d+(?:\.\d+)?)\s*([A-Z]+)$/i);
+    if (!match) {
+      throw new Error(`Invalid --amount-human format: '${options.amountHuman}'. Expected format: '1 WETH' or '1000 USDC'`);
+    }
+    
+    const [, amountStr, symbol] = match;
+    const tokenInfo = fetcher.getTokenInfo(symbol.toUpperCase());
+    
+    if (!tokenInfo) {
+      throw new Error(`Unknown token symbol: ${symbol}`);
+    }
+    
+    // Convert human amount to wei
+    const humanAmount = parseFloat(amountStr);
+    const amount = BigInt(Math.floor(humanAmount * (10 ** tokenInfo.decimals)));
+    
+    logger.info(`Parsed --amount-human: ${amountStr} ${symbol.toUpperCase()} = ${amount.toString()} wei`);
+    logger.info(`Note: This amount will be used for pairs where ${symbol.toUpperCase()} is the base token`);
+    logger.warn(`For pairs where ${symbol.toUpperCase()} is NOT the base token, the configured default size will be used instead`);
+    
+    // Set the override for the specified token
+    sizeOverride = {
+      [tokenInfo.address.toLowerCase()]: amount,
+    };
+  } else if (options.amount) {
     const amount = BigInt(options.amount);
     sizeOverride = {
       [dexesConfig.zkSyncEra.tokens.WETH.address.toLowerCase()]: amount,
