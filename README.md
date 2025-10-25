@@ -81,6 +81,10 @@ npm run cli -- diag quotes
 # Test with custom amount (in wei)
 npm run cli -- diag quotes --amount 1000000000000000000
 
+# Test with human-readable amount - NEW!
+npm run cli -- diag quotes --amount-human "1 WETH"
+npm run cli -- diag quotes --amount-human "2000 USDC"
+
 # Filter quotes by specific DEX
 npm run cli -- diag quotes --dex pancakeswap_v3
 
@@ -102,6 +106,8 @@ npm run cli -- diag config
 - Displays human-readable amounts with proper decimal formatting
 - Shows per-DEX rate (e.g., "2000.123456 USDC per WETH")
 - Calculates and displays spread % between all successful quotes
+- **Shows summary of DEXes that returned quotes vs skipped per pair**
+- **Displays detailed skip reasons (e.g., "no pool returned by factory", "revert during quote")**
 - SyncSwap resilient quoting with multi-ABI probing, off-chain fallback, and auto-disable (see TROUBLESHOOTING.md)
 
 ### 3. Verify in Your Dashboard
@@ -235,23 +241,33 @@ npm run cli -- scan-once
 # Filter by specific pairs
 npm run cli -- scan-once --pairs WETH/USDC,USDC/USDT
 
-# Set minimum spread threshold (in basis points)
+# Set minimum spread threshold (in basis points, can be negative to show lossy trades)
 npm run cli -- scan-once --min-spread-bps 10
 
-# Override flashloan amount
+# Show negative spreads (lossy round-trips)
+npm run cli -- scan-once --min-spread-bps -1000
+
+# Override flashloan amount (legacy format, in wei)
 npm run cli -- scan-once --amount 1000000000000000000
+
+# Override flashloan amount (human-readable format) - NEW!
+npm run cli -- scan-once --amount-human "1 WETH"
+npm run cli -- scan-once --amount-human "2000 USDC"
 
 # Use custom RPC (testing only)
 npm run cli -- scan-once --rpc https://custom-rpc.example.com
 ```
 
 Scans all configured pairs once and prints a sorted table of recognized opportunities sorted by spread. Shows:
-- Token pair and size
+- Token pair and size (annotated with human-readable value when using --amount-human)
 - Best path for each leg (DEX used)
-- Zero-slippage spread (gross profit potential)
-- Slippage-adjusted spread (realistic profit after slippage)
+- Zero-slippage spread (gross profit potential) - **now shows negative values for lossy trades**
+- Slippage-adjusted spread (realistic profit after slippage) - **now shows negative values for lossy trades**
 - Estimated net profit (after gas costs)
-- Executability flag (meets minProfitUSD threshold)
+- Executable flag (✓ if meets profit thresholds)
+- Detailed path metadata including pool type and method for top opportunities
+
+**Note**: Spread values are now signed and can be negative to accurately reflect lossy round-trips. Recognition and execution logic remain unchanged (only positive spreads are considered executable).
 
 ## Recognition vs Executable
 

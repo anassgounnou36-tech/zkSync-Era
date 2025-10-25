@@ -2,6 +2,7 @@ import { logger } from "../config/logger.js";
 import { createProvider, getSelectedRpcUrls } from "../providers/factory.js";
 import { metricsTracker } from "../monitoring/metrics.js";
 import { PriceFetcher } from "../prices/fetcher.js";
+import { parseHumanAmount, formatAmount as formatTokenAmount } from "../utils/math.js";
 import dexesConfig from "../../config/dexes.json" assert { type: "json" };
 import strategyConfig from "../../config/strategy.json" assert { type: "json" };
 
@@ -67,19 +68,11 @@ export async function diagHealth(rpcOverride?: string): Promise<void> {
 }
 
 /**
- * Format token amount to human-readable string using decimals
+ * Format token amount to human-readable string using decimals (internal helper)
  */
-function formatTokenAmount(amount: bigint, decimals: number, symbol: string): string {
-  const divisor = BigInt(10 ** decimals);
-  const wholePart = amount / divisor;
-  const fractionalPart = amount % divisor;
-  const fractionalStr = fractionalPart.toString().padStart(decimals, '0');
-  
-  // Show up to 6 decimal places for readability
-  const displayDecimals = Math.min(6, decimals);
-  const truncatedFractional = fractionalStr.slice(0, displayDecimals);
-  
-  return `${wholePart}.${truncatedFractional} ${symbol}`;
+function formatTokenAmountWithSymbol(amount: bigint, decimals: number, symbol: string): string {
+  const formatted = formatTokenAmount(amount, decimals, 6);
+  return `${formatted} ${symbol}`;
 }
 
 /**
@@ -101,6 +94,7 @@ function formatSpread(price1: number, price2: number): string {
 export async function diagQuotes(
   rpcOverride?: string, 
   amountOverride?: string,
+  amountHuman?: string,
   dexFilter?: string,
   pairFilter?: string,
   syncswapVerbose?: boolean
@@ -131,6 +125,30 @@ export async function diagQuotes(
     }
   }
 
+  // Parse amount overrides
+  let parsedHumanAmount: { amount: bigint; symbol: string; decimals: number; address: string } | null = null;
+  
+  if (amountHuman && amountOverride) {
+    throw new Error("Cannot specify both --amount and --amount-human. Use one or the other.");
+  }
+  
+  if (amountHuman) {
+    parsedHumanAmount = parseHumanAmount(amountHuman, (symbol: string) => {
+      const tokenInfo = fetcher.getTokenInfo(symbol);
+      if (!tokenInfo) return null;
+      return {
+        decimals: tokenInfo.decimals,
+        address: tokenInfo.address,
+      };
+    });
+    
+    if (!parsedHumanAmount) {
+      throw new Error(`Invalid --amount-human format: '${amountHuman}'. Expected format: '1 WETH' or '2000 USDC'`);
+    }
+    
+    logger.info(`Using human-readable amount: ${formatTokenAmountWithSymbol(parsedHumanAmount.amount, parsedHumanAmount.decimals, parsedHumanAmount.symbol)} (${parsedHumanAmount.amount.toString()} wei)`);
+  }
+
   logger.info(`Testing ${tokenPairs.length} token pairs across all enabled DEXes`);
   if (dexFilter) {
     logger.info(`Filtering for DEX: ${dexFilter}`);
@@ -156,14 +174,24 @@ export async function diagQuotes(
 
     // Use amount override or flashloan size from config
     let amountIn: bigint;
-    if (amountOverride) {
+    if (parsedHumanAmount) {
+      // Use human-readable amount if it matches the base token of the pair
+      if (parsedHumanAmount.address.toLowerCase() === tokenA.toLowerCase()) {
+        amountIn = parsedHumanAmount.amount;
+      } else {
+        // Token mismatch - use default size
+        logger.warn(`  Note: --amount-human specified ${parsedHumanAmount.symbol}, but pair base token is ${pair.tokenA}. Using default size for this pair.`);
+        const flashloanSizes = config.flashloanSize as Record<string, string>;
+        amountIn = BigInt(flashloanSizes[pair.tokenA] || "1000000000000000000");
+      }
+    } else if (amountOverride) {
       amountIn = BigInt(amountOverride);
     } else {
       const flashloanSizes = config.flashloanSize as Record<string, string>;
       amountIn = BigInt(flashloanSizes[pair.tokenA] || "1000000000000000000");
     }
 
-    const formattedAmountIn = formatTokenAmount(amountIn, tokenAInfo.decimals, pair.tokenA);
+    const formattedAmountIn = formatTokenAmountWithSymbol(amountIn, tokenAInfo.decimals, pair.tokenA);
     logger.info(`  Amount In: ${formattedAmountIn}`);
     logger.info(`  Token A: ${tokenA}`);
     logger.info(`  Token B: ${tokenB}`);
@@ -179,7 +207,7 @@ export async function diagQuotes(
     logger.info(`  DEX Quotes (${pair.tokenA} → ${pair.tokenB}):`);
     for (const price of filteredPrices) {
       if (price.success) {
-        const formattedAmountOut = formatTokenAmount(
+        const formattedAmountOut = formatTokenAmountWithSymbol(
           price.amountOut, 
           tokenBInfo.decimals, 
           pair.tokenB
@@ -211,9 +239,16 @@ export async function diagQuotes(
           `    ✓ ${price.dex.padEnd(15)}: ${formattedAmountOut.padEnd(25)} (${rate.toFixed(6)} ${pair.tokenB} per ${pair.tokenA})${metadataStr}`
         );
       } else {
-        logger.info(`    ✗ ${price.dex.padEnd(15)}: ${price.error}`);
+        // Show more detailed skip reason
+        const skipReason = price.error || "unknown error";
+        logger.info(`    ✗ ${price.dex.padEnd(15)}: ${skipReason}`);
       }
     }
+
+    // Show summary of DEX quote status
+    const successCount = filteredPrices.filter(p => p.success).length;
+    const failCount = filteredPrices.filter(p => !p.success).length;
+    logger.info(`  Summary: ${successCount} DEX(es) returned quotes, ${failCount} skipped`);
 
     // Calculate and show spreads between successful quotes
     const successfulPrices = filteredPrices.filter(p => p.success);

@@ -197,12 +197,13 @@ diagCommand
   .description("Fetch quotes from all enabled DEXes for configured pairs")
   .option("--rpc <url>", "Override RPC endpoint (for testing only)")
   .option("--amount <amount>", "Override amount to quote (in wei)")
+  .option("--amount-human <amount>", "Override amount in human-readable format (e.g., '1 WETH', '2000 USDC')")
   .option("--dex <name>", "Filter by specific DEX name")
   .option("--pair <pair>", "Filter by specific pair (e.g., USDC/USDT)")
   .option("--syncswap-verbose", "Enable verbose logging for SyncSwap probing", false)
   .action(async (options) => {
     try {
-      await diagQuotes(options.rpc, options.amount, options.dex, options.pair, options.syncswapVerbose);
+      await diagQuotes(options.rpc, options.amount, options.amountHuman, options.dex, options.pair, options.syncswapVerbose);
       process.exit(0);
     } catch (error) {
       logger.error({ error }, "Quote test failed");
@@ -232,7 +233,8 @@ program
   .option("--pairs <pairs>", "Comma-separated list of pairs (e.g., WETH/USDC,USDC/USDT)")
   .option("--dexes <dexes>", "Comma-separated list of DEXes to use")
   .option("--amount <amount>", "Override flashloan amount (in wei)")
-  .option("--min-spread-bps <bps>", "Minimum spread in basis points to display", "0")
+  .option("--amount-human <amount>", "Override flashloan amount in human-readable format (e.g., '1 WETH', '2000 USDC')")
+  .option("--min-spread-bps <bps>", "Minimum spread in basis points to display (can be negative to show lossy trades)", "0")
   .option("--rpc <url>", "Override RPC endpoint (for testing only)")
   .action(async (options) => {
     logger.info({ options }, "Starting scan-once command");
@@ -244,6 +246,7 @@ program
         pairs: options.pairs ? options.pairs.split(",") : undefined,
         dexes: options.dexes ? options.dexes.split(",") : undefined,
         amount: options.amount,
+        amountHuman: options.amountHuman,
         minSpreadBps: parseInt(options.minSpreadBps),
       });
       process.exit(0);

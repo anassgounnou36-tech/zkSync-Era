@@ -77,12 +77,52 @@ export function parseAmount(value: string, decimals: number): bigint {
 }
 
 /**
+ * Parse human-readable amount with token symbol (e.g., "1 WETH", "2000 USDC")
+ * Returns { amount: bigint, symbol: string } or null if invalid format
+ */
+export function parseHumanAmount(
+  humanAmount: string,
+  tokenInfoLookup: (symbol: string) => { decimals: number; address: string } | null
+): { amount: bigint; symbol: string; decimals: number; address: string } | null {
+  // Expected format: "123.45 SYMBOL" or "123 SYMBOL"
+  const trimmed = humanAmount.trim();
+  const parts = trimmed.split(/\s+/);
+  
+  if (parts.length !== 2) {
+    return null;
+  }
+  
+  const [amountStr, symbol] = parts;
+  
+  // Validate amount is a valid number
+  if (!/^\d+(\.\d+)?$/.test(amountStr)) {
+    return null;
+  }
+  
+  // Look up token info
+  const tokenInfo = tokenInfoLookup(symbol.toUpperCase());
+  if (!tokenInfo) {
+    return null;
+  }
+  
+  // Parse the amount with correct decimals
+  const amount = parseAmount(amountStr, tokenInfo.decimals);
+  
+  return {
+    amount,
+    symbol: symbol.toUpperCase(),
+    decimals: tokenInfo.decimals,
+    address: tokenInfo.address,
+  };
+}
+
+/**
  * Calculate gross spread in basis points for a round-trip arbitrage
  * grossSpreadBps = ((amountOut - amountIn) / amountIn) * 10000
+ * Returns signed value (can be negative when round-trip is lossy)
  */
 export function calculateGrossSpreadBps(amountIn: bigint, amountOut: bigint): bigint {
   if (amountIn === 0n) return 0n;
-  if (amountOut <= amountIn) return 0n;
   
   const profit = amountOut - amountIn;
   return (profit * 10000n) / amountIn;
