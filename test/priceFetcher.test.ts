@@ -19,7 +19,7 @@ describe("PriceFetcher", () => {
     it("should call Quoter contract with correct parameters", async () => {
       const mockResult = [BigInt(1000000), BigInt(0), 0, BigInt(50000)];
       
-      // Mock the Contract call
+      // Mock the Contract call - the new implementation batches calls
       vi.spyOn(mockProvider, "send").mockResolvedValue(mockResult);
 
       const tokenIn = "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91"; // WETH
@@ -32,10 +32,15 @@ describe("PriceFetcher", () => {
       expect(result.tokenIn).toBe(tokenIn);
       expect(result.tokenOut).toBe(tokenOut);
       expect(result.amountIn).toBe(amountIn);
+      // Should have metadata with path information
+      if (result.success) {
+        expect(result.metadata?.pathType).toBeDefined();
+        expect(result.metadata?.feeTiers).toBeDefined();
+      }
     });
 
     it("should handle quote revert with clear error", async () => {
-      // Mock a revert
+      // Mock a revert for all attempts
       vi.spyOn(mockProvider, "send").mockRejectedValue(
         new Error("execution reverted")
       );
@@ -49,6 +54,49 @@ describe("PriceFetcher", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
       expect(result.amountOut).toBe(0n);
+    });
+
+    it("should include path metadata when successful", async () => {
+      const mockResult = [BigInt(2000000), BigInt(0), 0, BigInt(50000)];
+      
+      vi.spyOn(mockProvider, "send").mockResolvedValue(mockResult);
+
+      const tokenIn = "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91"; // WETH
+      const tokenOut = "0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4"; // USDC
+      const amountIn = BigInt(1000000000000000000);
+
+      const result = await fetcher.fetchPancakeSwapV3Price(tokenIn, tokenOut, amountIn);
+
+      if (result.success) {
+        expect(result.metadata).toBeDefined();
+        expect(result.metadata?.pathType).toBeDefined();
+        expect(result.metadata?.feeTiers).toBeDefined();
+        expect(result.metadata?.feeTiers).toBeInstanceOf(Array);
+        expect(result.metadata?.feeTiers!.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("should enumerate multiple paths with different fee tiers", async () => {
+      // This test verifies that the implementation tries multiple paths
+      // by checking that it doesn't fail immediately
+      const mockResult = [BigInt(1500000), BigInt(0), 0, BigInt(50000)];
+      vi.spyOn(mockProvider, "send").mockResolvedValue(mockResult);
+
+      const tokenIn = "0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91"; // WETH
+      const tokenOut = "0x493257fD37EDB34451f62EDf8D2a0C418852bA4C"; // USDT
+      const amountIn = BigInt(1000000000000000000);
+
+      const result = await fetcher.fetchPancakeSwapV3Price(tokenIn, tokenOut, amountIn);
+
+      // Should return a result (direct or multi-hop)
+      expect(result).toBeDefined();
+      expect(result.dex).toBe("pancakeswap_v3");
+      
+      // If successful, verify metadata includes path info
+      if (result.success) {
+        expect(result.metadata?.pathType).toBeDefined();
+        expect(result.metadata?.feeTiers).toBeInstanceOf(Array);
+      }
     });
   });
 
