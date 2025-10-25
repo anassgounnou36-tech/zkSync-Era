@@ -93,7 +93,7 @@ Expected:
 - "Database schema initialized with migrations" logged
 - No "no such column" errors
 - When spreads > 0, rows appear with recognized=1
-- Runs for 3 minutes (0.05 hours) and generates report
+- Runs for 0.05 hours (3 minutes) and generates report
 
 ## Verification Checklist
 
