@@ -6,6 +6,7 @@ import {
   roundDown,
   formatAmount,
   parseAmount,
+  parseHumanAmount,
   calculateGrossSpreadBps,
   applySlippage,
   calculateAmountOutMinimum,
@@ -128,6 +129,78 @@ describe("Math Utilities", () => {
     });
   });
 
+  describe("parseHumanAmount", () => {
+    const mockTokenLookup = (symbol: string) => {
+      const tokens: Record<string, { decimals: number; address: string }> = {
+        'WETH': { decimals: 18, address: '0x5AEa5775959fBC2557Cc8789bC1bf90A239D9a91' },
+        'USDC': { decimals: 6, address: '0x3355df6D4c9C3035724Fd0e3914dE96A5a83aaf4' },
+        'USDT': { decimals: 6, address: '0x493257fD37EDB34451f62EDf8D2a0C418852bA4C' },
+      };
+      return tokens[symbol] || null;
+    };
+
+    it("should parse '1 WETH'", () => {
+      const result = parseHumanAmount("1 WETH", mockTokenLookup);
+      expect(result).not.toBeNull();
+      expect(result?.amount).toBe(1n * 10n ** 18n);
+      expect(result?.symbol).toBe("WETH");
+      expect(result?.decimals).toBe(18);
+    });
+
+    it("should parse '2000 USDC'", () => {
+      const result = parseHumanAmount("2000 USDC", mockTokenLookup);
+      expect(result).not.toBeNull();
+      expect(result?.amount).toBe(2000n * 10n ** 6n);
+      expect(result?.symbol).toBe("USDC");
+      expect(result?.decimals).toBe(6);
+    });
+
+    it("should parse decimal amounts '0.5 WETH'", () => {
+      const result = parseHumanAmount("0.5 WETH", mockTokenLookup);
+      expect(result).not.toBeNull();
+      expect(result?.amount).toBe(500000000000000000n);
+    });
+
+    it("should parse '123.456 USDC'", () => {
+      const result = parseHumanAmount("123.456 USDC", mockTokenLookup);
+      expect(result).not.toBeNull();
+      expect(result?.amount).toBe(123456000n);
+    });
+
+    it("should handle lowercase symbol", () => {
+      const result = parseHumanAmount("1 weth", mockTokenLookup);
+      expect(result).not.toBeNull();
+      expect(result?.symbol).toBe("WETH");
+    });
+
+    it("should return null for invalid format (no space)", () => {
+      const result = parseHumanAmount("1WETH", mockTokenLookup);
+      expect(result).toBeNull();
+    });
+
+    it("should return null for invalid format (too many parts)", () => {
+      const result = parseHumanAmount("1 2 WETH", mockTokenLookup);
+      expect(result).toBeNull();
+    });
+
+    it("should return null for invalid amount", () => {
+      const result = parseHumanAmount("abc WETH", mockTokenLookup);
+      expect(result).toBeNull();
+    });
+
+    it("should return null for unknown token", () => {
+      const result = parseHumanAmount("1 INVALID", mockTokenLookup);
+      expect(result).toBeNull();
+    });
+
+    it("should handle extra whitespace", () => {
+      const result = parseHumanAmount("  1   WETH  ", mockTokenLookup);
+      expect(result).not.toBeNull();
+      expect(result?.amount).toBe(1n * 10n ** 18n);
+    });
+  });
+
+
   describe("calculateGrossSpreadBps", () => {
     it("should calculate positive spread", () => {
       const amountIn = 1000n;
@@ -143,11 +216,11 @@ describe("Math Utilities", () => {
       expect(result).toBe(0n);
     });
 
-    it("should return 0 for loss", () => {
+    it("should return negative spread for loss", () => {
       const amountIn = 1000n;
       const amountOut = 950n;
       const result = calculateGrossSpreadBps(amountIn, amountOut);
-      expect(result).toBe(0n);
+      expect(result).toBe(-500n); // -5% = -500 bps
     });
 
     it("should handle zero amountIn", () => {
