@@ -268,7 +268,6 @@ Scans all configured pairs once and prints a sorted table of recognized opportun
 - Detailed path metadata including pool type and method for top opportunities
 
 **Note**: Spread values are now signed and can be negative to accurately reflect lossy round-trips. Recognition and execution logic remain unchanged (only positive spreads are considered executable).
-- Executability flag (meets minProfitUSD threshold)
 
 ## Recognition vs Executable
 
