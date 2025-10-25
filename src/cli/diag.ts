@@ -208,6 +208,19 @@ export async function diagQuotes(
           if (price.metadata.poolAddress && !price.metadata.pathType) {
             parts.push(`addr: ${price.metadata.poolAddress.slice(0, 10)}...`);
           }
+          // Show resolved tokens if aliasing was used
+          if (price.metadata.resolvedTokens) {
+            const resolved = price.metadata.resolvedTokens;
+            if (resolved.tokenInFrom !== "original" || resolved.tokenOutFrom !== "original") {
+              const tokenInInfo = resolved.tokenInFrom === "bridged" ? "USDC.e" : 
+                                  resolved.tokenInFrom === "native" ? "USDC" : "";
+              const tokenOutInfo = resolved.tokenOutFrom === "bridged" ? "USDC.e" : 
+                                   resolved.tokenOutFrom === "native" ? "USDC" : "";
+              if (tokenInInfo || tokenOutInfo) {
+                parts.push(`tokens: ${tokenInInfo || pair.tokenA}/${tokenOutInfo || pair.tokenB}`);
+              }
+            }
+          }
           if (parts.length > 0) {
             metadataStr = ` [${parts.join(', ')}]`;
           }
