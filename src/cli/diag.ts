@@ -201,7 +201,13 @@ export async function diagQuotes(
           const parts: string[] = [];
           if (price.metadata.poolType) parts.push(`pool: ${price.metadata.poolType}`);
           if (price.metadata.method) parts.push(`method: ${price.metadata.method}`);
-          if (price.metadata.poolAddress) parts.push(`addr: ${price.metadata.poolAddress.slice(0, 10)}...`);
+          if (price.metadata.pathType) parts.push(`path: ${price.metadata.pathType}`);
+          if (price.metadata.feeTiers && price.metadata.feeTiers.length > 0) {
+            parts.push(`fees: ${price.metadata.feeTiers.join(',')}`);
+          }
+          if (price.metadata.poolAddress && !price.metadata.pathType) {
+            parts.push(`addr: ${price.metadata.poolAddress.slice(0, 10)}...`);
+          }
           if (parts.length > 0) {
             metadataStr = ` [${parts.join(', ')}]`;
           }

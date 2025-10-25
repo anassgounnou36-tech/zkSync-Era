@@ -232,6 +232,7 @@ program
   .option("--pairs <pairs>", "Comma-separated list of pairs (e.g., WETH/USDC,USDC/USDT)")
   .option("--dexes <dexes>", "Comma-separated list of DEXes to use")
   .option("--amount <amount>", "Override flashloan amount (in wei)")
+  .option("--amount-human <amount>", "Override flashloan amount in human-readable format (e.g., '1 WETH', '1000 USDC')")
   .option("--min-spread-bps <bps>", "Minimum spread in basis points to display", "0")
   .option("--rpc <url>", "Override RPC endpoint (for testing only)")
   .action(async (options) => {
@@ -244,6 +245,7 @@ program
         pairs: options.pairs ? options.pairs.split(",") : undefined,
         dexes: options.dexes ? options.dexes.split(",") : undefined,
         amount: options.amount,
+        amountHuman: options.amountHuman,
         minSpreadBps: parseInt(options.minSpreadBps),
       });
       process.exit(0);

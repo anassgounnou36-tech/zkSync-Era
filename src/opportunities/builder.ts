@@ -248,15 +248,49 @@ export class OpportunityBuilder {
     );
     
     for (const pair of pairs) {
-      // Determine size for base token (tokenA)
-      const size = sizes[pair.tokenA.toLowerCase()] || sizes[pair.tokenB.toLowerCase()];
+      // Determine size for base token (tokenA), with fallback to tokenB
+      let size = sizes[pair.tokenA.toLowerCase()];
+      let sizeSource = "tokenA";
+      
+      if (!size) {
+        size = sizes[pair.tokenB.toLowerCase()];
+        sizeSource = "tokenB (fallback)";
+      }
+      
+      if (!size) {
+        // Try getting from configured defaults
+        const tokenASymbol = this.getTokenSymbol(pair.tokenA);
+        const tokenBSymbol = this.getTokenSymbol(pair.tokenB);
+        
+        if (tokenASymbol && strategyConfig.arbitrage.flashloanSize[tokenASymbol as keyof typeof strategyConfig.arbitrage.flashloanSize]) {
+          size = BigInt(strategyConfig.arbitrage.flashloanSize[tokenASymbol as keyof typeof strategyConfig.arbitrage.flashloanSize] as string);
+          sizeSource = "config default for tokenA";
+        } else if (tokenBSymbol && strategyConfig.arbitrage.flashloanSize[tokenBSymbol as keyof typeof strategyConfig.arbitrage.flashloanSize]) {
+          size = BigInt(strategyConfig.arbitrage.flashloanSize[tokenBSymbol as keyof typeof strategyConfig.arbitrage.flashloanSize] as string);
+          sizeSource = "config default for tokenB";
+        }
+      }
       
       if (!size) {
         logger.warn({ pair }, "No size configured for pair, skipping");
         continue;
       }
       
-      logger.debug({ pair, size: size.toString() }, "Scanning pair");
+      const tokenASymbol = this.getTokenSymbol(pair.tokenA);
+      const tokenBSymbol = this.getTokenSymbol(pair.tokenB);
+      
+      if (sizeSource.includes("fallback") || sizeSource.includes("config default")) {
+        logger.warn(
+          { 
+            pair: `${tokenASymbol}/${tokenBSymbol}`, 
+            size: size.toString(),
+            sizeSource
+          }, 
+          `Using ${sizeSource} size for pair`
+        );
+      } else {
+        logger.debug({ pair, size: size.toString(), sizeSource }, "Scanning pair");
+      }
       
       // Fetch best quotes in both directions
       const quoteAtoB = await this.fetchBestQuote(pair.tokenA, pair.tokenB, size);
@@ -328,5 +362,18 @@ export class OpportunityBuilder {
     }
     
     return this.buildOpportunity(tokenA, tokenB, amountIn, quoteAtoB, quoteBtoA);
+  }
+
+  /**
+   * Get token symbol by address
+   */
+  private getTokenSymbol(address: string): string | undefined {
+    const addressLower = address.toLowerCase();
+    for (const [symbol, token] of Object.entries(dexesConfig.zkSyncEra.tokens)) {
+      if (token.address.toLowerCase() === addressLower) {
+        return symbol;
+      }
+    }
+    return undefined;
   }
 }

@@ -26,6 +26,8 @@ export interface DexPrice {
     poolAddress?: string;
     poolType?: string;
     method?: string;
+    pathType?: string; // e.g., "direct", "multi-hop via USDC"
+    feeTiers?: number[]; // Fee tiers used in the path
   };
 }
 
@@ -269,7 +271,12 @@ export class PriceFetcher {
 
   /**
    * Fetch price from PancakeSwap V3 using Quoter V2
-   * Tries multiple fee tiers and multi-hop routes (via WETH, USDC, USDT) to find the best quote
+   * Enumerates and evaluates multiple paths:
+   * - Direct (exactInputSingle) with fee tiers: 500 and 2500
+   * - Multi-hop via USDC (exactInput path): tokenIn->USDC (500, 2500) -> tokenOut (500, 2500)
+   * - Multi-hop via USDT for relevant pairs: tokenIn->USDT (500, 2500) -> tokenOut (500, 2500)
+   * 
+   * Uses concurrency with per-path timeout to efficiently find the best quote.
    */
   async fetchPancakeSwapV3Price(
     tokenIn: string,
@@ -289,15 +296,85 @@ export class PriceFetcher {
 
     const feeTiers = [500, 2500]; // 0.05% and 0.25% fee tiers
     const sqrtPriceLimitX96 = 0; // No limit
+    const PER_PATH_TIMEOUT_MS = 5000; // 5 second timeout per path
 
-    let bestAmountOut = 0n;
-    let bestPath = "direct";
-    let bestFees: number[] = [];
-    let bestError: string | undefined;
+    interface PathAttempt {
+      pathType: string;
+      feeTiers: number[];
+      amountOut: bigint;
+      success: boolean;
+      error?: string;
+    }
 
-    // Try single-hop with multiple fee tiers
-    for (const fee of feeTiers) {
+    const pathAttempts: PathAttempt[] = [];
+
+    // Helper to try a path with timeout
+    const tryPathWithTimeout = async (
+      pathFn: () => Promise<bigint>,
+      pathType: string,
+      fees: number[]
+    ): Promise<PathAttempt> => {
       try {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("timeout")), PER_PATH_TIMEOUT_MS);
+        });
+
+        const amountOut = await Promise.race([pathFn(), timeoutPromise]);
+
+        logger.debug(
+          { 
+            dex: "pancakeswap_v3", 
+            pathType,
+            fees,
+            amountOut: amountOut.toString(),
+          },
+          "Path quote successful"
+        );
+
+        return {
+          pathType,
+          feeTiers: fees,
+          amountOut,
+          success: true,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const reason = errorMessage.includes("timeout") 
+          ? "timeout"
+          : errorMessage.includes("revert") || errorMessage.includes("insufficient")
+          ? "revert/insufficient liquidity"
+          : "error";
+
+        logger.debug(
+          { 
+            dex: "pancakeswap_v3", 
+            pathType,
+            fees,
+            error: errorMessage,
+            reason
+          },
+          "Path quote failed"
+        );
+
+        return {
+          pathType,
+          feeTiers: fees,
+          amountOut: 0n,
+          success: false,
+          error: reason,
+        };
+      }
+    };
+
+    const tokenInLower = tokenIn.toLowerCase();
+    const tokenOutLower = tokenOut.toLowerCase();
+
+    // Build list of path attempts
+    const pathPromises: Promise<PathAttempt>[] = [];
+
+    // 1. Try direct paths with each fee tier
+    for (const fee of feeTiers) {
+      const pathFn = async () => {
         const params = {
           tokenIn,
           tokenOut,
@@ -305,57 +382,17 @@ export class PriceFetcher {
           fee,
           sqrtPriceLimitX96,
         };
-
         const result = await quoter.quoteExactInputSingle.staticCall(params);
-        const amountOut = BigInt(result[0].toString());
-        
-        if (amountOut > bestAmountOut) {
-          bestAmountOut = amountOut;
-          bestPath = `direct (fee: ${fee})`;
-          bestFees = [fee];
-          bestError = undefined;
-        }
-        
-        logger.debug(
-          { 
-            dex: "pancakeswap_v3", 
-            path: "single-hop",
-            tokenIn, 
-            tokenOut, 
-            amountIn: amountIn.toString(), 
-            amountOut: amountOut.toString(),
-            fee
-          },
-          "Single-hop quote successful"
-        );
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        logger.debug(
-          { 
-            dex: "pancakeswap_v3", 
-            path: "single-hop",
-            tokenIn, 
-            tokenOut,
-            fee,
-            error: errorMessage
-          },
-          "Single-hop quote failed"
-        );
-        if (bestAmountOut === 0n) {
-          bestError = errorMessage;
-        }
-      }
+        return BigInt(result[0].toString());
+      };
+      pathPromises.push(tryPathWithTimeout(pathFn, `direct (fee: ${fee})`, [fee]));
     }
 
-    // Try multi-hop via WETH, USDC, and USDT
+    // 2. Try multi-hop via USDC and USDT
     const intermediateTokens = [
-      { address: this.config.tokens.WETH.address, symbol: "WETH" },
       { address: this.config.tokens.USDC.address, symbol: "USDC" },
       { address: this.config.tokens.USDT.address, symbol: "USDT" },
     ];
-
-    const tokenInLower = tokenIn.toLowerCase();
-    const tokenOutLower = tokenOut.toLowerCase();
 
     for (const intermediate of intermediateTokens) {
       const intermediateLower = intermediate.address.toLowerCase();
@@ -370,73 +407,65 @@ export class PriceFetcher {
       // Try different fee tier combinations
       for (const fee1 of feeTiers) {
         for (const fee2 of feeTiers) {
-          try {
+          const pathFn = async () => {
             const path = this.encodePancakeV3Path(
               [tokenIn, intermediate.address, tokenOut],
               [fee1, fee2]
             );
-
-            logger.debug(
-              { 
-                dex: "pancakeswap_v3", 
-                path: "multi-hop",
-                route: `${tokenIn} -> ${intermediate.symbol} -> ${tokenOut}`,
-                fees: [fee1, fee2]
-              },
-              "Trying multi-hop quote"
-            );
-
             const result = await quoter.quoteExactInput.staticCall(path, amountIn);
-            const amountOut = BigInt(result[0].toString());
-
-            if (amountOut > bestAmountOut) {
-              bestAmountOut = amountOut;
-              bestPath = `multi-hop via ${intermediate.symbol}`;
-              bestFees = [fee1, fee2];
-              bestError = undefined;
-            }
-
-            logger.debug(
-              { 
-                dex: "pancakeswap_v3", 
-                path: "multi-hop",
-                intermediate: intermediate.symbol,
-                amountOut: amountOut.toString(),
-                fees: [fee1, fee2]
-              },
-              "Multi-hop quote successful"
-            );
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : "Unknown error";
-            logger.debug(
-              { 
-                dex: "pancakeswap_v3", 
-                path: "multi-hop",
-                intermediate: intermediate.symbol,
-                fees: [fee1, fee2],
-                error: errorMessage
-              },
-              "Multi-hop quote failed"
-            );
-          }
+            return BigInt(result[0].toString());
+          };
+          pathPromises.push(
+            tryPathWithTimeout(pathFn, `multi-hop via ${intermediate.symbol}`, [fee1, fee2])
+          );
         }
       }
     }
 
+    // Execute all paths with small concurrency (up to 3 concurrent requests)
+    const CONCURRENCY = 3;
+    for (let i = 0; i < pathPromises.length; i += CONCURRENCY) {
+      const batch = pathPromises.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(batch);
+      pathAttempts.push(...results);
+    }
+
+    // Find the best successful path
+    let bestAttempt: PathAttempt | null = null;
+    for (const attempt of pathAttempts) {
+      if (attempt.success && (!bestAttempt || attempt.amountOut > bestAttempt.amountOut)) {
+        bestAttempt = attempt;
+      }
+    }
+
+    // Generate statistics for logging
+    const totalPaths = pathAttempts.length;
+    const successfulPaths = pathAttempts.filter(a => a.success).length;
+    const failedPaths = pathAttempts.filter(a => !a.success).length;
+    const timeoutCount = pathAttempts.filter(a => a.error === "timeout").length;
+    const revertCount = pathAttempts.filter(a => a.error === "revert/insufficient liquidity").length;
+
     // Return the best result
-    if (bestAmountOut > 0n) {
+    if (bestAttempt) {
       logger.debug(
         { 
           dex: "pancakeswap_v3", 
-          selectedPath: bestPath,
-          fees: bestFees,
+          selectedPath: bestAttempt.pathType,
+          fees: bestAttempt.feeTiers,
           tokenIn, 
           tokenOut, 
           amountIn: amountIn.toString(), 
-          amountOut: bestAmountOut.toString(),
+          amountOut: bestAttempt.amountOut.toString(),
+          pathStats: {
+            total: totalPaths,
+            successful: successfulPaths,
+            failed: failedPaths,
+            timeouts: timeoutCount,
+            reverts: revertCount
+          },
           quoterAddress: this.config.dexes.pancakeswap_v3.quoter
         },
-        `Price quote successful using ${bestPath}`
+        `Price quote successful using ${bestAttempt.pathType}`
       );
 
       return {
@@ -444,22 +473,31 @@ export class PriceFetcher {
         tokenIn,
         tokenOut,
         amountIn,
-        amountOut: bestAmountOut,
-        price: Number(bestAmountOut) / Number(amountIn),
+        amountOut: bestAttempt.amountOut,
+        price: Number(bestAttempt.amountOut) / Number(amountIn),
         success: true,
         metadata: {
-          poolAddress: bestPath,
-          method: bestPath,
+          poolAddress: bestAttempt.pathType,
+          method: bestAttempt.pathType,
+          pathType: bestAttempt.pathType,
+          feeTiers: bestAttempt.feeTiers,
         },
       };
     } else {
+      const firstError = pathAttempts.find(a => a.error)?.error || "Unknown error";
       logger.warn(
         { 
           dex: "pancakeswap_v3", 
           tokenIn, 
           tokenOut, 
           amountIn: amountIn.toString(),
-          error: bestError,
+          pathStats: {
+            total: totalPaths,
+            successful: successfulPaths,
+            failed: failedPaths,
+            timeouts: timeoutCount,
+            reverts: revertCount
+          },
           quoterAddress: this.config.dexes.pancakeswap_v3.quoter
         },
         "All quote paths failed - pool may not exist or have insufficient liquidity"
@@ -473,7 +511,7 @@ export class PriceFetcher {
         amountOut: 0n,
         price: 0,
         success: false,
-        error: bestError,
+        error: firstError,
       };
     }
   }
